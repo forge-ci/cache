@@ -31,7 +31,6 @@ from pathlib import Path
 from cachelib import (
     FileStore,
     Key,
-    Manifest,
     ManifestError,
     OciStore,
     Registry,
@@ -41,6 +40,7 @@ from cachelib import (
     plan_restore,
 )
 from cachelib.chain import describe
+from cachelib.publish import publish_layer
 from cachelib.retention import SweepPlan, apply_sweep, plan_sweep, sweep_all  # noqa: F401
 
 
@@ -54,7 +54,14 @@ def store_from(args: argparse.Namespace, key: Key | None):
     if args.store == "oci":
         if key is None:
             raise SystemExit("--store oci needs one key; --all works on a directory store")
-        return OciStore(Registry(host=args.registry, namespace=args.namespace), key)
+        return OciStore(
+            Registry(
+                host=args.registry,
+                namespace=args.namespace,
+                scheme=getattr(args, "registry_scheme", "https"),
+            ),
+            key,
+        )
     _, _, path = args.store.partition("=")
     return FileStore(Path(path or ".cachectl"))
 
@@ -120,28 +127,20 @@ def command_plan(args: argparse.Namespace) -> int:
 def command_push(args: argparse.Namespace) -> int:
     key = key_from(args)
     store = store_from(args, key)
-    stream = Path(args.stream)
-    if not stream.is_file():
-        raise SystemExit(f"{stream} is not a file")
-    entries = store.entries(key)
-    plan = plan_push(entries, key, args.identity)
-    manifest = Manifest(
-        key=key,
-        seq=plan.seq,
-        identity=args.identity,
-        kind=plan.kind,
-        parent=plan.parent.digest if plan.parent else None,
-        digest=digest_of(stream),
-        bytes=stream.stat().st_size,
-        created_at=now(),
-        ref=args.ref,
-        source_sha=args.sha,
-        run_id=args.run_id,
-    )
-    store.put_blob(manifest, stream)
-    store.put_manifest(manifest)
+    try:
+        manifest = publish_layer(
+            store,
+            key,
+            args.identity,
+            Path(args.stream),
+            ref=args.ref,
+            source_sha=args.sha,
+            run_id=args.run_id,
+        )
+    except FileNotFoundError as error:
+        raise SystemExit(str(error)) from error
     print(
-        f"published {plan.kind} s{plan.seq:06d} {manifest.digest} "
+        f"published {manifest.kind} s{manifest.seq:06d} {manifest.digest} "
         f"({manifest.bytes} B) for {key.prefix} identity {args.identity}"
     )
     return 0
@@ -247,6 +246,9 @@ def main() -> int:
         sub.add_argument("--store", default="dir=.cachectl")
         sub.add_argument("--registry", default="ghcr.io")
         sub.add_argument("--namespace", default="forge-ci")
+        # A plain-http registry is a real deployment shape (localhost, private
+        # mirror); https stays the default because ghcr is.
+        sub.add_argument("--registry-scheme", default="https", choices=("https", "http"))
         if name in ("plan", "push", "pull"):
             sub.add_argument("--identity", required=True)
         if name == "push":

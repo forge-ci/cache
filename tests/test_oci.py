@@ -93,6 +93,26 @@ class OciRoundTripTest(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             self.store.get_blob(ghost, self.root / "nope.bin")
 
+    def test_publishing_through_the_shared_path_works_on_a_registry(self):
+        # `publish_layer` is what the CLI calls. On a registry there is no second
+        # write: the tag goes up with the blob, so a publish must not try to
+        # `put_manifest` afterwards (the registry refuses it).
+        from cachelib.publish import publish_layer
+
+        manifest = publish_layer(
+            self.store,
+            self.key,
+            "fc-1-linux-x64-debug-1.98.1",
+            self.payload,
+            ref="refs/heads/master",
+            run_id="42",
+        )
+        self.assertEqual(manifest.seq, 1)
+        entries = self.store.entries()
+        self.assertEqual([m.seq for m in entries], [1])
+        self.assertEqual(entries[0].digest, manifest.digest)
+        self.assertEqual(entries[0].ref, "refs/heads/master")
+
     def test_the_registry_is_not_a_manifest_store(self):
         manifest = Manifest(
             key=self.key,

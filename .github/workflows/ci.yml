@@ -48,6 +48,28 @@ jobs:
           CACHECTL_TEST_REGISTRY_SCHEME: http
         run: uv run --no-project python3 -m unittest tests.test_oci -v
 
+      # The library tests prove the backend; this proves the *CLI* the fleet will
+      # actually call: push two layers, list them, and check that a restore plan
+      # sees the chain it just published.
+      - name: CLI round trip over OCI 🧾
+        run: |
+          set -euo pipefail
+          printf 'layer-one%.0s' {1..200} > /tmp/l1.bin
+          printf 'layer-two%.0s' {1..200} > /tmp/l2.bin
+          # An array, not a string: `--namespace ""` has to survive as an empty
+          # argument, and unquoted expansion would drop it.
+          common=(--repo obs-rust/obs-studio --family app --platform linux-x64
+                  --store oci --registry 127.0.0.1:5000 --namespace "" --registry-scheme http)
+          uv run --python 3.14 cachectl.py push "${common[@]}" --identity ci-probe --stream /tmp/l1.bin
+          uv run --python 3.14 cachectl.py push "${common[@]}" --identity ci-probe --stream /tmp/l2.bin
+          listing=$(uv run --python 3.14 cachectl.py list "${common[@]}")
+          echo "$listing"
+          # Assert the shape, not the sequence numbers: a persistent registry
+          # (a local re-run) starts at whatever it already holds.
+          echo "$listing" | grep -q 'ci-probe'
+          uv run --python 3.14 cachectl.py plan "${common[@]}" --identity ci-probe | tee /tmp/plan.txt
+          grep -qE 'restore: hit: s[0-9]{6} via 2 layer\(s\)' /tmp/plan.txt
+
   gate:
     name: gate (${{ matrix.lane }})
     runs-on: ubuntu-24.04
