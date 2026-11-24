@@ -67,3 +67,21 @@ tested; the OCI transport has its naming and addressing implemented and its
 push/pull sequences specified but not yet exercised against a registry —
 `gh`'s OAuth token carries no `write:packages`, which is one of the reasons a
 GitHub App is required (see `docs/design.md`).
+
+## How projects consume this
+
+Not by calling `cachectl.py`. **Rust projects get this through
+`forge-ci/setup-soldr`**, which owns the restore-before-build and save-in-post
+lifecycle they already run. It gains a `fleet-cache` tier (`auto` by default)
+that computes the key and the identity itself, so a lane opts in with three
+inputs and no credentials:
+
+```
+with:
+  fleet-cache: auto
+  fleet-cache-family: app
+```
+
+`docs/design.md` has the full surface, the "computed, not passed" rule it
+follows, and the failure semantics (an unreachable store is a miss, never a red
+build).

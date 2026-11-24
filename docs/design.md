@@ -112,18 +112,92 @@ operations of the same store.
    and specified, not yet proven against a registry.
 3. **Identity derivation.** `identity` must be computed by one shared function
    (`native_cache_identity.py` in obs-studio is the current candidate) or a
-   producer will publish under an identity no consumer computes.
+   producer will publish under an identity no consumer computes. This is the
+   reason the integration surface is setup-soldr and not this CLI: see below.
 4. **Retention.** A rolling store grows without bound until a sweep exists:
    keep the newest N per key, always keep the newest full base, drop deltas whose
    children are gone.
+
+## Integration: setup-soldr is the only entry point
+
+Rust projects do not call `cachectl.py`. They do not pin a CLI, template a
+shell step, or thread an identity through their workflows. **Integration is
+through `forge-ci/setup-soldr`**, which owns the restore-before-build and
+save-in-post lifecycle in every repo that already uses it — 15 callsites in
+`obs-rust/obs-studio` alone.
+
+The rule that makes this work: anything a workflow author could get wrong is
+computed, not passed.
+
+| Concern | Who decides |
+|---|---|
+| key (`repo`, `family`, `platform`) | setup-soldr, from the event, the runner and the input family |
+| `identity` | setup-soldr, from the same native toolchain identity it already captures (`native_cache_identity.py`) |
+| restore/publish timing | setup-soldr's existing main/post phases |
+| publish permission | the GitHub App installation token, not a per-repo secret |
+| retention, chain length, base cuts | the store's policy (`MAX_DELTA_CHAIN`), never a workflow input |
+
+### The API extension
+
+setup-soldr grows one tier alongside the ones it already has (`actions/cache`,
+the S3 `s3-bucket` tier), with the same no-credential-means-off rule that makes
+`s3-bucket` safe today:
+
+```
+- uses: forge-ci/setup-soldr@<sha>
+  with:
+    # The whole integration. No keys, no identity, no policy.
+    fleet-cache: auto            # auto | off   (auto = on when the App is installed)
+    fleet-cache-family: app      # the build type; defaults to the job's lane name
+    fleet-cache-publish: auto    # auto publishes from any ref that built successfully
+```
+
+Why these three and no more:
+
+- **`auto` is the default and it must be the frictionless one.** `auto` restores
+  when a compatible entry exists and publishes when the build succeeded, on any
+  ref — including `merge_group`. That is the entire point: under GitHub's rules
+  a merge-queue run can never fill the Actions cache, so a tier that only
+  publishes from master reproduces the bug we are removing.
+- **Publishing is unprivileged**, so `auto` is safe: an entry is an append-only
+  sequence, so a wrong or useless publish costs store space (bounded by
+  retention) and never corrupts what another run will restore.
+- **`fleet-cache-family` is the only thing a human names**, because only a human
+  knows that a job is "app" and not "tier2" — and getting it wrong only splits
+  keys, it does not break correctness.
+- **The identity is never an input.** If a workflow supplied it, producers and
+  consumers could disagree and the mismatch would present as a permanent miss
+  with no error. setup-soldr computes it from what it already probes.
+
+### What setup-soldr keeps doing
+
+The existing tiers do not move. `save-cache`, `save-cache-remote`, `s3-bucket`,
+`cache-preset` and `build-cache` keep their current meanings, and `fleet-cache`
+is a fourth tier that no-ops when its App is absent or its inputs are off. A
+repo on `s3-bucket` gains nothing and loses nothing until it opts in, which is
+what makes the migration reversible.
+
+### Failure semantics
+
+- App unreachable, registry down, or entry absent → restore **misses** and the
+  build proceeds cold, exactly as if the tier were off. A cache must never be
+  able to fail a build.
+- Publish fails → a warning, never a red job.
+- An identity mismatch is a miss with a logged reason (the CLI's exit 3), not a
+  silent partial restore.
+- `fleet-cache: off` is a hard switch, so a repo can leave during an incident
+  without a revert.
 
 ## Migration
 
 `obs-rust/obs-studio` first, because it has the hardest case (three app platforms,
 a 10 GiB-bound cache, and merge-queue runs that are structurally cold):
 
-1. publish app-build caches for linux-x64, macOS arm64/x86_64, windows x64/arm64
-   from trusted master + nightly;
-2. restore them in `macos-build`, `windows-build`, `ubuntu-build` before configure;
-3. measure merge-queue wall time and compiler hit counters, not step colours;
-4. only then retire the residual setup-soldr cache machinery.
+1. extend setup-soldr with the `fleet-cache` tier (API above), App installed;
+2. `macos-build`, `windows-build`, `ubuntu-build` flip to `fleet-cache: auto` —
+   the lanes that need it get the store without touching their steps;
+3. publish app-build caches for linux-x64, macOS arm64/x86_64, windows x64/arm64
+   from master, nightly **and** merge_queue;
+4. measure merge-queue wall time and compiler hit counters, not step colours;
+5. only then retire the residual setup-soldr cache machinery (`s3-bucket`, the
+   undeclared build family), which is also what frees the 10 GiB budget.
