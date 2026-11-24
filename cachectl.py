@@ -41,15 +41,19 @@ from cachelib import (
     plan_restore,
 )
 from cachelib.chain import describe
-from cachelib.retention import SweepPlan, apply_sweep, plan_sweep  # noqa: F401
+from cachelib.retention import SweepPlan, apply_sweep, plan_sweep, sweep_all  # noqa: F401
 
 
 def key_from(args: argparse.Namespace) -> Key:
+    if not (args.repo and args.family and args.platform):
+        raise SystemExit("--repo, --family and --platform are required (or --all for every key)")
     return Key(args.repo, args.family, args.platform)
 
 
-def store_from(args: argparse.Namespace, key: Key):
+def store_from(args: argparse.Namespace, key: Key | None):
     if args.store == "oci":
+        if key is None:
+            raise SystemExit("--store oci needs one key; --all works on a directory store")
         return OciStore(Registry(host=args.registry, namespace=args.namespace), key)
     _, _, path = args.store.partition("=")
     return FileStore(Path(path or ".cachectl"))
@@ -196,6 +200,17 @@ def parse_size(text: str | None) -> int | None:
 
 
 def command_prune(args: argparse.Namespace) -> int:
+    if args.all_keys:
+        store = store_from(args, None)
+        reports = sweep_all(
+            store,
+            keep=args.keep,
+            max_bytes=parse_size(args.max_bytes),
+            protect={d.strip() for d in args.protect.split(",") if d.strip()},
+            dry_run=args.dry_run,
+        )
+        print(json.dumps(reports, indent=2))
+        return 0
     key = key_from(args)
     store = store_from(args, key)
     protect = {digest.strip() for digest in args.protect.split(",") if digest.strip()}
@@ -224,9 +239,11 @@ def main() -> int:
     stages = parser.add_subparsers(dest="command", required=True)
     for name in ("plan", "push", "pull", "list", "prune"):
         sub = stages.add_parser(name)
-        sub.add_argument("--repo", required=True)
-        sub.add_argument("--family", required=True)
-        sub.add_argument("--platform", required=True)
+        # Optional so `prune --all` can sweep every key; key_from enforces them
+        # everywhere a single key is required.
+        sub.add_argument("--repo", default=None)
+        sub.add_argument("--family", default=None)
+        sub.add_argument("--platform", default=None)
         sub.add_argument("--store", default="dir=.cachectl")
         sub.add_argument("--registry", default="ghcr.io")
         sub.add_argument("--namespace", default="forge-ci")
@@ -238,6 +255,12 @@ def main() -> int:
             sub.add_argument("--sha", default="")
             sub.add_argument("--run-id", default="")
         if name == "prune":
+            sub.add_argument(
+                "--all",
+                dest="all_keys",
+                action="store_true",
+                help="sweep every key in a directory store",
+            )
             sub.add_argument(
                 "--keep",
                 type=int,

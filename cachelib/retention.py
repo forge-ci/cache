@@ -177,6 +177,34 @@ def plan_sweep(
     )
 
 
+def sweep_all(
+    store,
+    *,
+    keep: int = 2,
+    max_bytes: int | None = None,
+    protect: set[str] | None = None,
+    dry_run: bool = True,
+    keys: list | None = None,
+) -> list[dict]:
+    """Sweep every key in the store and return one report per key.
+
+    This is the scheduled entry point: a sweep is an administrative decision made
+    on a timer, never something a publish waits for. `dry_run` defaults to True so
+    an operator (or a new caller) has to ask for deletion explicitly.
+    """
+    reports: list[dict] = []
+    for key in keys if keys is not None else store.keys():
+        entries = store.entries(key)
+        if not entries:
+            continue
+        plan = plan_sweep(entries, key, keep=keep, max_bytes=max_bytes, protect=protect)
+        # Report every key that has entries, even when nothing is evicted: an
+        # operator running a sweep wants the map of the store, not only the keys
+        # that happened to change today.
+        reports.append(apply_sweep(store, plan, dry_run=dry_run))
+    return reports
+
+
 def orphan_blobs(store, evicted: list[Manifest]) -> list[str]:
     """Digests referenced only by EVICTED entries, across every key in the store.
 

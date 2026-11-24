@@ -166,6 +166,38 @@ class LifecycleTest(ServerTest):
         self.assertIn("sqlite.db", payload["db"])
 
 
+class SweepTest(ServerTest):
+    """/sweep is the scheduled entry point, and it is dry unless told otherwise."""
+
+    def publish_two_chains(self) -> None:
+        """MAX_DELTA_CHAIN deltas then a new base: the smallest real second chain."""
+        session = self.session["id"]
+        for index in range(7):
+            self.assertEqual(self.publish(session, f"layer-{index}".encode() * 20)[0], 201)
+
+    def test_a_dry_run_is_the_default_and_deletes_nothing(self):
+        self.publish_two_chains()
+        status, payload = self.json("POST", "/sweep", {"keep": 1})
+        self.assertEqual(status, 200, payload)
+        self.assertTrue(payload["dry_run"])
+        self.assertGreaterEqual(payload["keys"], 1)
+        status, listed = self.json("GET", f"/sessions/{self.session['id']}")
+        self.assertEqual(status, 200)
+
+    def test_an_explicit_sweep_bounds_the_store(self):
+        self.publish_two_chains()
+        status, payload = self.json("POST", "/sweep", {"keep": 1, "dry_run": False})
+        self.assertEqual(status, 200, payload)
+        self.assertFalse(payload["dry_run"])
+        self.assertGreaterEqual(sum(len(report["evicted"]) for report in payload["reports"]), 1)
+        listing = self.json("GET", "/health")[1]
+        self.assertGreaterEqual(listing["keys"], 1)
+
+    def test_a_bad_keep_is_a_400_not_a_crash(self):
+        status, payload = self.json("POST", "/sweep", {"keep": 0, "dry_run": True})
+        self.assertEqual(status, 400, payload)
+
+
 class ReplayOverHttpTest(ServerTest):
     def test_a_whole_session_replays_identically(self):
         session_id = self.session["id"]

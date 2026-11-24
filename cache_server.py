@@ -40,6 +40,7 @@ from pathlib import Path
 
 from cachelib.chain import plan_push, plan_restore
 from cachelib.manifest import Manifest, ManifestError
+from cachelib.retention import sweep_all
 from cachelib.sessions import (
     Session,
     SessionLog,
@@ -59,6 +60,7 @@ ROUTES = {
     "close": re.compile(r"^/sessions/(?P<id>[0-9a-f]{32})/close$"),
     "replay": re.compile(r"^/sessions/(?P<id>[0-9a-f]{32})/replay$"),
     "blob": re.compile(r"^/blobs/(?P<digest>sha256:[0-9a-f]{64})$"),
+    "sweep": re.compile(r"^/sweep$"),
     "health": re.compile(r"^/health$"),
 }
 
@@ -295,6 +297,26 @@ class Handler(BaseHTTPRequestHandler):
                 "signature": publish_signature(plan),
             },
         )
+
+    def post_sweep(self, _match: re.Match, _query: dict) -> None:
+        """Bound the store: the scheduled sweep, on demand.
+
+        Defaults to a dry run on purpose -- deletion is an administrative decision
+        and a caller that wants it has to say so. A sweep never blocks a publish.
+        """
+        body = self._json_body()
+        keep = int(body.get("keep", 2))
+        if keep < 1:
+            # Validate the request, not the store: a bad keep is a bad keep even
+            # when there is nothing to sweep.
+            raise ValueError("keep must be at least 1")
+        max_bytes = body.get("max_bytes")
+        protect = set(body.get("protect") or [])
+        dry_run = bool(body.get("dry_run", True))
+        reports = sweep_all(
+            self.state.store(), keep=keep, max_bytes=max_bytes, protect=protect, dry_run=dry_run
+        )
+        self._send(200, {"dry_run": dry_run, "keys": len(reports), "reports": reports})
 
     def get_blob(self, match: re.Match, _query: dict) -> None:
         digest = match["digest"]

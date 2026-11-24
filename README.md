@@ -92,6 +92,21 @@ The CLI and the service are two front doors onto one store, and
 restored (byte-identical) by the service, a chain published by the service is
 listed and planned by the CLI, and both agree on what an identity miss is.
 
+## Sweeping (retention, scheduled)
+
+A store that only appends grows forever, so the sweep is a first-class operation
+of both front doors — and it is **dry by default**, because deletion is an
+administrative decision, never something a publish waits on.
+
+    cachectl.py prune --all --keep 1 --dry-run      # the map of the store
+    cachectl.py prune --all --keep 1                # delete what the plan names
+    curl -s -XPOST localhost:8787/sweep -d '{"keep":1,"dry_run":false}'
+
+Eviction is **chain-granular**: the newest N chains survive per identity, a
+protected digest keeps its whole chain, and the size cap drops whole chains
+oldest-first. Dropping a middle entry would orphan its deltas — the failure this
+whole design exists to remove — so a chain bigger than the cap is kept whole.
+
 ## Status
 
 Prototype, with the whole model working end to end in Python and the decision

@@ -114,9 +114,13 @@ operations of the same store.
    (`native_cache_identity.py` in obs-studio is the current candidate) or a
    producer will publish under an identity no consumer computes. This is the
    reason the integration surface is setup-soldr and not this CLI: see below.
-4. **Retention.** A rolling store grows without bound until a sweep exists:
-   keep the newest N per key, always keep the newest full base, drop deltas whose
-   children are gone.
+4. **Retention.** Implemented (`cachelib/retention.py`, `cachelib/retention.rs`)
+   and reachable from both front doors — `cachectl.py prune [--all]` and
+   `POST /sweep` — dry by default. Eviction is chain-granular: the newest N chains
+   survive per identity, a protected digest keeps its whole chain, and the size cap
+   drops whole chains oldest-first. Still missing is a *timer*: something has to
+   call it (a scheduled workflow, or the server on an interval) for the store to be
+   bounded without a human.
 
 ## Components: one model, two deployments
 

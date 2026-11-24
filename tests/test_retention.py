@@ -7,7 +7,13 @@ import unittest
 from pathlib import Path
 
 from cachelib.manifest import DELTA, FULL, Key, Manifest
-from cachelib.retention import apply_sweep, chains_of, orphan_blobs, plan_sweep
+from cachelib.retention import (
+    apply_sweep,
+    chains_of,
+    orphan_blobs,
+    plan_sweep,
+    sweep_all,
+)
 from cachelib.store import FileStore, digest_of
 
 KEY = Key("obs-rust/obs-studio", "app", "linux-x64")
@@ -205,6 +211,63 @@ class ApplySweepTest(unittest.TestCase):
         # The evicted manifests are still on disk when the sweep asks, so they
         # must not count as their own references (a leak, not a safety net).
         self.assertEqual(len(orphan_blobs(self.store, entries)), 2)
+
+
+class SweepAllTest(unittest.TestCase):
+    """The scheduled entry point: every key, dry by default."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.store = FileStore(self.root / "store")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def publish(self, key: Key, seqs: list[int], bases: set[int], identity: str = "id-a"):
+        for manifest in chain_entries(seqs, identity=identity, key=key, bases=bases):
+            payload = self.root / f"{key.repo.replace('/', '-')}-{key.platform}-{manifest.seq}.bin"
+            payload.write_bytes(f"{identity}:{manifest.seq}".encode() * 8)
+            stored = Manifest(
+                key=key,
+                seq=manifest.seq,
+                identity=manifest.identity,
+                kind=manifest.kind,
+                parent=manifest.parent,
+                digest=digest_of(payload),
+                bytes=payload.stat().st_size,
+                created_at="2026-11-24T00:00:00Z",
+            )
+            self.store.put_blob(stored, payload)
+            self.store.put_manifest(stored)
+
+    def test_sweep_all_covers_every_key(self):
+        self.publish(KEY, [1, 2], {1})
+        self.publish(OTHER, [3], {3})
+        reports = sweep_all(self.store, keep=1, dry_run=True)
+        self.assertTrue(reports, "a dry run still reports the keys it would touch")
+        self.assertEqual({report["key"] for report in reports}, {KEY.prefix, OTHER.prefix})
+
+    def test_sweep_all_defaults_to_dry_and_deletes_nothing(self):
+        self.publish(KEY, [1, 2], {1})
+        self.publish(KEY, [3], {3})
+        before = [m.seq for m in self.store.entries(KEY)]
+        sweep_all(self.store, keep=1)
+        self.assertEqual([m.seq for m in self.store.entries(KEY)], before)
+
+        reports = sweep_all(self.store, keep=1, dry_run=False)
+        self.assertEqual(len(reports), 1)
+        self.assertEqual([m.seq for m in self.store.entries(KEY)], [3])
+
+    def test_an_untouched_key_is_still_reported(self):
+        # A sweep reports the map of the store, including keys it leaves alone.
+        self.publish(KEY, [1], {1})
+        reports = sweep_all(self.store, keep=5, dry_run=True)
+        self.assertEqual(len(reports), 1)
+        self.assertEqual(reports[0]["evicted"], [])
+
+    def test_an_empty_store_reports_nothing(self):
+        self.assertEqual(sweep_all(self.store, keep=2), [])
 
 
 if __name__ == "__main__":
