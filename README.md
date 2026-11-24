@@ -94,8 +94,12 @@ listed and planned by the CLI, and both agree on what an identity miss is.
 
 ## Status
 
-Prototype. The manifest, chain and file-store layers are implemented and
-tested; the OCI transport has its naming and addressing implemented and its
+Prototype. The manifest, chain, file-store, session and server layers are
+implemented and tested in Python; the Rust crate (`rust/`) implements the same
+model and is held to the shared corpus in `fixtures/conformance.json` by
+`rust/tests/conformance.rs`, so the two decide identically today. Still missing
+from the crate: the file store, blob digesting and the registry transport — it
+decides, the caller moves bytes. the OCI transport has its naming and addressing implemented and its
 push/pull sequences specified but not yet exercised against a registry —
 `gh`'s OAuth token carries no `write:packages`, which is one of the reasons a
 GitHub App is required (see `docs/design.md`).

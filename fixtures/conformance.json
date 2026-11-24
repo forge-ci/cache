@@ -1,0 +1,311 @@
+{
+  "schema": 1,
+  "note": "Conformance corpus for forge-ci/cache. Python (cachelib.chain) and the Rust crate must both reproduce every expectation here byte-for-byte; a fixture either implementation disagrees with is a bug, not a tolerance.",
+  "key": {
+    "repo": "obs-rust/obs-studio",
+    "family": "app",
+    "platform": "linux-x64"
+  },
+  "max_delta_chain": 5,
+  "cases": [
+    {
+      "name": "cold store publishes a full base",
+      "why": "Nothing to delta against; a restore with no entries is a miss, not an empty hit.",
+      "manifests": [],
+      "push": {
+        "identity": "id-a",
+        "expect": {
+          "kind": "full",
+          "seq": 1,
+          "parent": null
+        }
+      },
+      "restore": {
+        "identity": "id-a",
+        "expect": {
+          "hit": false,
+          "layers": []
+        }
+      }
+    },
+    {
+      "name": "a warm chain deltas from the tip",
+      "why": "One layer restored, and the next publish continues the chain.",
+      "manifests": [
+        {
+          "seq": 1,
+          "identity": "id-a",
+          "kind": "full",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+          "bytes": 100,
+          "created_at": "2026-11-24T00:00:00Z",
+          "parent": null
+        }
+      ],
+      "push": {
+        "identity": "id-a",
+        "expect": {
+          "kind": "delta",
+          "seq": 2,
+          "parent": 1
+        }
+      },
+      "restore": {
+        "identity": "id-a",
+        "expect": {
+          "hit": true,
+          "layers": [
+            1
+          ]
+        }
+      }
+    },
+    {
+      "name": "five deltas then a new base",
+      "why": "MAX_DELTA_CHAIN=5: the sixth publish cuts a base instead of stacking.",
+      "manifests": [
+        {
+          "seq": 1,
+          "identity": "id-a",
+          "kind": "full",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+          "bytes": 100,
+          "created_at": "2026-11-24T00:00:00Z",
+          "parent": null
+        },
+        {
+          "seq": 2,
+          "identity": "id-a",
+          "kind": "delta",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+          "bytes": 200,
+          "created_at": "2026-11-24T00:00:00Z",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000001"
+        },
+        {
+          "seq": 3,
+          "identity": "id-a",
+          "kind": "delta",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000003",
+          "bytes": 300,
+          "created_at": "2026-11-24T00:00:00Z",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000002"
+        },
+        {
+          "seq": 4,
+          "identity": "id-a",
+          "kind": "delta",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000004",
+          "bytes": 400,
+          "created_at": "2026-11-24T00:00:00Z",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000003"
+        },
+        {
+          "seq": 5,
+          "identity": "id-a",
+          "kind": "delta",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000005",
+          "bytes": 500,
+          "created_at": "2026-11-24T00:00:00Z",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000004"
+        },
+        {
+          "seq": 6,
+          "identity": "id-a",
+          "kind": "delta",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000006",
+          "bytes": 600,
+          "created_at": "2026-11-24T00:00:00Z",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000005"
+        }
+      ],
+      "push": {
+        "identity": "id-a",
+        "expect": {
+          "kind": "full",
+          "seq": 7,
+          "parent": null
+        }
+      },
+      "restore": {
+        "identity": "id-a",
+        "expect": {
+          "hit": true,
+          "layers": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ]
+        }
+      }
+    },
+    {
+      "name": "a different identity never deltas against this one",
+      "why": "Identity is the compatibility contract; another toolchain's chain is not a parent.",
+      "manifests": [
+        {
+          "seq": 1,
+          "identity": "id-a",
+          "kind": "full",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+          "bytes": 100,
+          "created_at": "2026-11-24T00:00:00Z",
+          "parent": null
+        },
+        {
+          "seq": 2,
+          "identity": "id-a",
+          "kind": "delta",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+          "bytes": 200,
+          "created_at": "2026-11-24T00:00:00Z",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000001"
+        }
+      ],
+      "push": {
+        "identity": "id-b",
+        "expect": {
+          "kind": "full",
+          "seq": 3,
+          "parent": null
+        }
+      },
+      "restore": {
+        "identity": "id-b",
+        "expect": {
+          "hit": false,
+          "layers": []
+        }
+      }
+    },
+    {
+      "name": "a broken chain is a miss and the next publish starts over",
+      "why": "Applying a delta to a missing base corrupts the tree, so it is never attempted.",
+      "manifests": [
+        {
+          "seq": 1,
+          "identity": "id-a",
+          "kind": "full",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+          "bytes": 100,
+          "created_at": "2026-11-24T00:00:00Z",
+          "parent": null
+        },
+        {
+          "seq": 2,
+          "identity": "id-a",
+          "kind": "delta",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+          "bytes": 200,
+          "created_at": "2026-11-24T00:00:00Z",
+          "parent": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        }
+      ],
+      "push": {
+        "identity": "id-a",
+        "expect": {
+          "kind": "full",
+          "seq": 3,
+          "parent": null
+        }
+      },
+      "restore": {
+        "identity": "id-a",
+        "expect": {
+          "hit": false,
+          "layers": []
+        }
+      }
+    },
+    {
+      "name": "a pinned restore applies ancestors up to the pin",
+      "why": "A bisect wants the state as of a specific entry, still base-first.",
+      "manifests": [
+        {
+          "seq": 1,
+          "identity": "id-a",
+          "kind": "full",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+          "bytes": 100,
+          "created_at": "2026-11-24T00:00:00Z",
+          "parent": null
+        },
+        {
+          "seq": 2,
+          "identity": "id-a",
+          "kind": "delta",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+          "bytes": 200,
+          "created_at": "2026-11-24T00:00:00Z",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000001"
+        },
+        {
+          "seq": 3,
+          "identity": "id-a",
+          "kind": "delta",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000003",
+          "bytes": 300,
+          "created_at": "2026-11-24T00:00:00Z",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000002"
+        }
+      ],
+      "restore": {
+        "identity": "id-a",
+        "expect": {
+          "hit": true,
+          "layers": [
+            1,
+            2,
+            3
+          ]
+        }
+      },
+      "pin": {
+        "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+        "expect": {
+          "hit": true,
+          "layers": [
+            1,
+            2
+          ]
+        }
+      }
+    },
+    {
+      "name": "the newest identity chain wins",
+      "why": "Two identities coexist; restore never mixes them.",
+      "manifests": [
+        {
+          "seq": 1,
+          "identity": "id-a",
+          "kind": "full",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+          "bytes": 100,
+          "created_at": "2026-11-24T00:00:00Z",
+          "parent": null
+        },
+        {
+          "seq": 2,
+          "identity": "id-b",
+          "kind": "full",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+          "bytes": 200,
+          "created_at": "2026-11-24T00:00:00Z",
+          "parent": null
+        }
+      ],
+      "restore": {
+        "identity": "id-b",
+        "expect": {
+          "hit": true,
+          "layers": [
+            2
+          ]
+        }
+      }
+    }
+  ]
+}

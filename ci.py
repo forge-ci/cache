@@ -6,25 +6,31 @@
 """The repo's gate: `./ci.py` runs everything, `./ci.py <gate>` runs one lane.
 
 Lanes:
-    test    the manifest/chain/store suites (no network, no btrfs needed)
-    lint    ruff on the package and the CLI
-    all     both (the default)
+    test    the manifest/chain/store/server suites (no network, no btrfs needed)
+    lint    ruff on the package, the CLI and the server
+    rust    the Rust crate plus the shared conformance corpus
+    all     every lane (the default)
 """
 
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 
 
-def run(command: list[str], env: dict[str, str] | None = None) -> int:
+def run(
+    command: list[str], env: dict[str, str] | None = None, cwd: Path | None = None
+) -> int:
     print(f"+ {' '.join(command)}", flush=True)
     return subprocess.run(
-        command, cwd=ROOT, env={**os.environ, "PYTHONPATH": str(ROOT), **(env or {})}
+        command,
+        cwd=cwd or ROOT,
+        env={**os.environ, "PYTHONPATH": str(ROOT), **(env or {})},
+        check=False,
     ).returncode
 
 
@@ -37,6 +43,7 @@ def gate_lint() -> int:
         ["uv", "run", "--no-project", "ruff", "--version"],
         capture_output=True,
         text=True,
+        check=False,
     )
     if ruff.returncode != 0:
         print("ruff unavailable; skipping lint", file=sys.stderr)
@@ -72,7 +79,33 @@ def gate_lint() -> int:
     )
 
 
-GATES = {"test": gate_test, "lint": gate_lint}
+def gate_rust() -> int:
+    """The crate plus the corpus both implementations are held to.
+
+    `cargo` is hook-blocked in this estate, so go through soldr; fall back to
+    cargo only where soldr is absent (a bare clone on a foreign host).
+    """
+    manifest = ROOT / "rust" / "Cargo.toml"
+    if not manifest.exists():
+        print("no rust/ crate; skipping", file=sys.stderr)
+        return 0
+    for driver in (["soldr", "cargo"], ["cargo"]):
+        if (
+            subprocess.run(
+                ["sh", "-c", f"command -v {driver[0]}"],
+                capture_output=True,
+                check=False,
+            ).returncode
+            == 0
+        ):
+            return run(
+                [*driver, "test", "--manifest-path", str(manifest)], cwd=ROOT / "rust"
+            )
+    print("no cargo available; skipping the rust lane", file=sys.stderr)
+    return 0
+
+
+GATES = {"test": gate_test, "lint": gate_lint, "rust": gate_rust}
 
 
 def main(argv: list[str]) -> int:

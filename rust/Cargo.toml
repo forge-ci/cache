@@ -1,0 +1,10 @@
+[package]
+name = "cachelib"
+version = "0.1.0"
+edition = "2021"
+description = "Embedded-mode forge-ci/cache: manifests, chains and publish/restore decisions"
+license = "MIT"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
