@@ -118,6 +118,67 @@ operations of the same store.
    keep the newest N per key, always keep the newest full base, drop deltas whose
    children are gone.
 
+## Components: one model, two deployments
+
+The store's rules (keys, ordered sequences, identity, chains, digests) are the
+contract. Two implementations ship them, and they must agree byte-for-byte on
+the wire format — the manifest JSON — or a cache written by one is invisible to
+the other.
+
+### 1. Rust library (embedded mode)
+
+`cachelib` as a crate, for processes that already own the build: soldr/zccache,
+setup-soldr's native helper, a self-hosted runner agent.
+
+- **No daemon, no HTTP, no Python.** A compiler launcher sits in a hot path;
+  shelling out to a Python CLI there is not acceptable.
+- `Store::open(root)` gives the local store; `store.session(key, identity)`
+  restores on entry and publishes on successful exit, in-process.
+- **Local-first, remote-opportunistic.** The local filesystem is always usable;
+  the registry push/pull happens after a successful build and on a miss. Offline
+  is a miss, never an error.
+- Same layer semantics: full tree, or delta from the parent (btrfs stream where
+  the platform has it, tar+zstd where it does not).
+
+The risk this creates is two implementations drifting, so the conformance
+contract is explicit: a shared fixture set of manifests and chains that both
+must parse, validate and plan identically (miss/restore decisions included),
+checked in CI on both sides.
+
+### 2. Python HTTP server (sessions, replay, sqlite)
+
+For orchestration and for anything that is not in a compile hot path: the
+nightly precache, seeding a fresh branch, retention sweeps, and CI clients that
+would rather talk to a service than to a registry.
+
+- **Session control.** A session is one build's cache lifecycle:
+  `POST /sessions` opens it (repo, ref, sha, run id, job, identity), the client
+  restores, publishes layers, and `POST /sessions/{id}/close` seals it. Sessions
+  make retries idempotent (re-close is a no-op), make in-flight work visible,
+  and give cancellation a name to cancel.
+- **Built-in replay.** `POST /sessions/{id}/replay` re-executes a recorded
+  session's operations in order against a target store, or in dry-run mode that
+  reports the decisions it *would* take. That is how a suspicious cold build is
+  diagnosed — you replay the session rather than argue with a log line — and how
+  a retention sweep or a store migration is validated before it touches
+  anything live.
+- **Each session appends to `sqlite.db`.** The database is a log, not a store of
+  cache content: manifests in the object store stay authoritative, and the
+  database can be rebuilt by replaying. Two tables:
+
+  ```
+  session(id, repo, ref, sha, run_id, job, identity, started_at, status)
+  event(session_id, ordinal, op, key, seq, digest, bytes, outcome, at)
+  ```
+
+  Rules: WAL mode, one writer, and **append-only** — a status change is a new
+  event, never an `UPDATE` of an existing row. That keeps replay honest (the
+  recorded history is the history) and keeps concurrent readers lock-free.
+
+This is the prototype orchestration plane that `docs/design.md` defers the
+"does it need a database" question to (issue #1): the store path stays
+distributed, the orchestration path is allowed a local, rebuildable log.
+
 ## Integration: setup-soldr is the only entry point
 
 Rust projects do not call `cachectl.py`. They do not pin a CLI, template a

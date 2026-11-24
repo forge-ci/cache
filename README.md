@@ -70,6 +70,11 @@ GitHub App is required (see `docs/design.md`).
 
 ## How projects consume this
 
+Two deployments of the same model (`docs/design.md`): a **Rust library** for
+embedded use (in-process, no daemon, for compiler launchers and runner agents)
+and a **Python HTTP server** with session control, built-in session replay and
+an append-only `sqlite.db` per session log.
+
 Not by calling `cachectl.py`. **Rust projects get this through
 `forge-ci/setup-soldr`**, which owns the restore-before-build and save-in-post
 lifecycle they already run. It gains a `fleet-cache` tier (`auto` by default)
