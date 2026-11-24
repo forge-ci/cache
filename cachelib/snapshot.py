@@ -16,9 +16,9 @@ Constraints this module encodes rather than hides:
 
 from __future__ import annotations
 
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-import subprocess
 
 BTRFS_MAGIC = "9123683e"
 
@@ -29,7 +29,10 @@ class SnapshotUnavailable(RuntimeError):
 
 def magic(path: str | Path) -> str:
     result = subprocess.run(
-        ["stat", "-f", "-c", "%t", str(path)], capture_output=True, text=True
+        ["stat", "-f", "-c", "%t", str(path)],
+        capture_output=True,
+        text=True,
+        check=False,
     )
     return result.stdout.strip() if result.returncode == 0 else ""
 
@@ -39,7 +42,9 @@ def available(path: str | Path) -> bool:
 
 
 def _run(*args: str) -> None:
-    result = subprocess.run(["btrfs", *args], capture_output=True, text=True)
+    result = subprocess.run(
+        ["btrfs", *args], capture_output=True, text=True, check=False
+    )
     if result.returncode != 0:
         raise SnapshotUnavailable(f"btrfs {' '.join(args)}: {result.stderr.strip()}")
 
@@ -71,7 +76,9 @@ class Snapshotter:
             command += ["-p", str(previous)]
         command.append(str(current))
         with stream.open("wb") as sink:
-            result = subprocess.run(command, stdout=sink, stderr=subprocess.PIPE)
+            result = subprocess.run(
+                command, stdout=sink, stderr=subprocess.PIPE, check=False
+            )
         if result.returncode != 0:
             raise SnapshotUnavailable(f"btrfs send: {result.stderr.decode().strip()}")
         return stream.stat().st_size
@@ -86,6 +93,7 @@ class Snapshotter:
                 stdin=source,
                 capture_output=True,
                 text=True,
+                check=False,
             )
         if result.returncode != 0:
             raise SnapshotUnavailable(f"btrfs receive: {result.stderr.strip()}")

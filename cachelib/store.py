@@ -15,15 +15,15 @@ backend here can list one prefix in publish order: a directory listing for
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
+from pathlib import Path
 
 from .manifest import Entry, Key, Manifest, ManifestError, parse_seq
 

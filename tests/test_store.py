@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
 from cachelib.manifest import DELTA, FULL, Key, Manifest, ManifestError
 from cachelib.store import FileStore, digest_of, repository_name

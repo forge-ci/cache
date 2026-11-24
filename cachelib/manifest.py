@@ -17,8 +17,8 @@ torn document.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
 import json
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 SCHEMA = 1
@@ -39,7 +39,7 @@ def seq_name(seq: int) -> str:
 
 def parse_seq(name: str) -> int:
     """`s000123` / `s000123.json` -> 123. Anything else is not an entry."""
-    stem = name[: -len(".json")] if name.endswith(".json") else name
+    stem = name.removesuffix(".json")
     if not stem.startswith("s") or not stem[1:].isdigit():
         raise ManifestError(f"{name!r} is not a cache entry name")
     return int(stem[1:])
@@ -127,7 +127,7 @@ class Manifest:
         return json.dumps(data, indent=2, sort_keys=True) + "\n"
 
     @classmethod
-    def from_json(cls, text: str) -> "Manifest":
+    def from_json(cls, text: str) -> Manifest:
         raw: dict[str, Any] = json.loads(text)
         key = raw.pop("key")
         if not isinstance(key, dict):
