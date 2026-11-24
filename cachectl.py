@@ -21,6 +21,7 @@ Stores: `--store dir=/path` (reference implementation, default `.cachectl`) or
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import tarfile
 import tempfile
@@ -40,6 +41,7 @@ from cachelib import (
     plan_restore,
 )
 from cachelib.chain import describe
+from cachelib.retention import SweepPlan, apply_sweep, plan_sweep  # noqa: F401
 
 
 def key_from(args: argparse.Namespace) -> Key:
@@ -175,6 +177,42 @@ def command_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def parse_size(text: str | None) -> int | None:
+    """`512MB`, `2GiB`, `1500000` -> bytes. None stays None (no cap)."""
+    if text is None or text == "":
+        return None
+    suffixes = {
+        "kb": 1 << 10,
+        "kib": 1 << 10,
+        "mb": 1 << 20,
+        "mib": 1 << 20,
+        "gb": 1 << 30,
+        "gib": 1 << 30,
+        "b": 1,
+    }
+    lowered = text.strip().lower()
+    for suffix, factor in sorted(suffixes.items(), key=lambda item: -len(item[0])):
+        if lowered.endswith(suffix):
+            return int(float(lowered[: -len(suffix)]) * factor)
+    return int(float(lowered))
+
+
+def command_prune(args: argparse.Namespace) -> int:
+    key = key_from(args)
+    store = store_from(args, key)
+    protect = {digest.strip() for digest in args.protect.split(",") if digest.strip()}
+    plan = plan_sweep(
+        store.entries(key),
+        key,
+        keep=args.keep,
+        max_bytes=parse_size(args.max_bytes),
+        protect=protect,
+    )
+    report = apply_sweep(store, plan, dry_run=args.dry_run)
+    print(json.dumps(report, indent=2))
+    return 0
+
+
 def command_pack(args: argparse.Namespace) -> int:
     size = pack(Path(args.directory), Path(args.out))
     print(f"{args.out}: {size} B, {digest_of(Path(args.out))}")
@@ -186,7 +224,7 @@ def main() -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     stages = parser.add_subparsers(dest="command", required=True)
-    for name in ("plan", "push", "pull", "list"):
+    for name in ("plan", "push", "pull", "list", "prune"):
         sub = stages.add_parser(name)
         sub.add_argument("--repo", required=True)
         sub.add_argument("--family", required=True)
@@ -201,6 +239,18 @@ def main() -> int:
             sub.add_argument("--ref", default="")
             sub.add_argument("--sha", default="")
             sub.add_argument("--run-id", default="")
+        if name == "prune":
+            sub.add_argument(
+                "--keep",
+                type=int,
+                default=2,
+                help="chains to keep per identity (a chain is a base plus its deltas)",
+            )
+            sub.add_argument("--max-bytes", default=None, help="e.g. 500MB, 2GiB")
+            sub.add_argument(
+                "--protect", default="", help="comma-separated digests to keep"
+            )
+            sub.add_argument("--dry-run", action="store_true")
         if name == "pull":
             sub.add_argument("--dest", required=True)
             sub.add_argument("--apply", choices=("tar", "btrfs", "none"), default="tar")
@@ -213,6 +263,7 @@ def main() -> int:
                 "push": command_push,
                 "pull": command_pull,
                 "list": command_list,
+                "prune": command_prune,
             }[name]
         )
     pack_parser = stages.add_parser(
