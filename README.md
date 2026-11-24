@@ -75,6 +75,23 @@ The server decides, the client transfers; a miss is a `200` with `"hit": false`,
 never an error. Every operation appends to `sqlite.db`, and replay reports
 per-step whether the recorded decision still holds.
 
+`cachelib/client.py` is the same thing from Python, in five calls:
+
+```python
+with CacheClient("http://127.0.0.1:8787") as cache:
+    session = cache.open("obs-rust/obs-studio", "app", "linux-x64", identity)
+    decision = cache.restore(session)          # hit False is a result, not a raise
+    for layer in decision.to_download:
+        cache.download(layer.digest, workdir / f"layer-{layer.seq}")
+    cache.publish(session, layer_bytes)
+    cache.close(session)
+```
+
+The CLI and the service are two front doors onto one store, and
+`tests/test_parity.py` holds them to it: a layer published by `cachectl.py` is
+restored (byte-identical) by the service, a chain published by the service is
+listed and planned by the CLI, and both agree on what an identity miss is.
+
 ## Status
 
 Prototype. The manifest, chain and file-store layers are implemented and
