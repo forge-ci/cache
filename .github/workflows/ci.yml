@@ -1,0 +1,46 @@
+name: ci
+
+# The repo's own gate, run where it cannot be skipped: `./ci.py` is the same
+# command a developer runs locally (test + lint + rust), so a green PR means the
+# same thing in both places. Python 3.14 is required -- `compression.zstd` and
+# the layer packer use it.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: gate (${{ matrix.lane }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [test, lint, rust]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv 🐍
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.14"
+          enable-cache: true
+
+      # The rust lane needs a toolchain; the test/lint lanes do not (and
+      # `ci.py` skips the lane when no cargo is present, so this is additive).
+      - name: Set up Rust 🦀
+        if: matrix.lane == 'rust'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Gate ${{ matrix.lane }}
+        run: uv run --python 3.14 ./ci.py ${{ matrix.lane }}
