@@ -21,11 +21,11 @@ Stores: `--store dir=/path` (reference implementation, default `.cachectl`) or
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
-from pathlib import Path
 import sys
 import tarfile
 import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
 
 from cachelib import (
     FileStore,

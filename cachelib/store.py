@@ -120,11 +120,29 @@ class FileStore:
         return destination
 
     def keys(self) -> list[Key]:
-        found: list[Key] = []
-        for path in sorted(self.root.glob("*/*/*")):
-            if path.is_dir():
-                found.append(Key(path.parts[-3], path.parts[-2], path.parts[-1]))
-        return found
+        """Every key with at least one entry.
+
+        Derived from the manifests themselves rather than from a glob of the
+        directory tree: `repo` is `owner/name`, so a key is four path segments
+        deep and any fixed-depth glob would silently stop matching a differently
+        shaped repo.
+        """
+        found: dict[str, Key] = {}
+        for path in sorted(self.root.rglob("*.json")):
+            if path.parent == self.root:
+                continue
+            try:
+                parse_seq(path.name)
+            except ManifestError:
+                continue
+            parts = path.parent.relative_to(self.root).parts
+            if len(parts) < 3:
+                continue
+            key = Key("/".join(parts[:-2]), parts[-2], parts[-1])
+            entry = found.get(key.prefix)
+            if entry is None:
+                found[key.prefix] = key
+        return [found[prefix] for prefix in sorted(found)]
 
 
 _SLUG = re.compile(r"[^a-z0-9]+")

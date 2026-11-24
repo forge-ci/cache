@@ -50,6 +50,7 @@ def gate_lint() -> int:
             "check",
             "cachelib",
             "cachectl.py",
+            "cache_server.py",
             "tests",
         ]
     )
@@ -65,6 +66,7 @@ def gate_lint() -> int:
             "--check",
             "cachelib",
             "cachectl.py",
+            "cache_server.py",
             "tests",
         ]
     )

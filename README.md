@@ -60,6 +60,21 @@ That means the producer needs a btrfs filesystem with a snapshot per publish.
 the filesystem-level proof runs on a host that has it (self-hosted runner) and
 the manifest/chain layer stays testable everywhere.
 
+## The server (deployment 2)
+
+    uv run cache_server.py --store .cachectl --db sqlite.db --port 8787
+
+    curl -s -XPOST localhost:8787/sessions -d '{"repo":"obs-rust/obs-studio","family":"app","platform":"linux-x64","identity":"rustc1.98.1-linux-x64-debug"}'
+    curl -s -XPOST localhost:8787/sessions/<id>/restore         # decision + layer digests
+    curl -s -XPOST localhost:8787/sessions/<id>/publish --data-binary @layer.tar.zst
+    curl -s localhost:8787/blobs/sha256:<hex> -o layer.tar.zst   # the bytes it named
+    curl -s -XPOST localhost:8787/sessions/<id>/close
+    curl -s -XPOST localhost:8787/sessions/<id>/replay -d '{"dry_run":true}'
+
+The server decides, the client transfers; a miss is a `200` with `"hit": false`,
+never an error. Every operation appends to `sqlite.db`, and replay reports
+per-step whether the recorded decision still holds.
+
 ## Status
 
 Prototype. The manifest, chain and file-store layers are implemented and

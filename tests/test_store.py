@@ -112,6 +112,13 @@ class FileStoreTest(unittest.TestCase):
         self.assertEqual(len(self.store.entries(KEY)), 1)
         self.assertEqual(len(self.store.entries(other)), 1)
 
+    def test_keys_are_found_for_a_nested_owner_name(self):
+        # `repo` is `owner/name`, so a key sits four segments deep; a
+        # fixed-depth glob used to miss these entirely.
+        nested = Key("obs-rust/obs-studio", "app", "linux-x64")
+        self.store.put_manifest(layer(nested, 1, FULL, blob=self._blob(b"nested")))
+        self.assertEqual([k.prefix for k in self.store.keys()], [nested.prefix])
+
     def _blob(self, content: bytes) -> Path:
         path = self.root / f"src-{content.decode()}.bin"
         path.write_bytes(content)
