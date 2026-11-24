@@ -19,6 +19,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The OCI transport is only real if it talks to a registry. A localhost
+  # `registry:2` accepts anonymous pushes, so this proves upload/tag/list/download
+  # without any credential -- the credential question is only about *ghcr*.
+  oci:
+    name: oci transport (local registry)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      registry:
+        image: registry:2
+        ports: ["5000:5000"]
+        options: >-
+          --health-cmd "wget -q -O- http://127.0.0.1:5000/v2/ || exit 1"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv 🐍
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.14"
+          enable-cache: true
+
+      - name: OCI round trip 🗄️
+        env:
+          CACHECTL_TEST_REGISTRY: 127.0.0.1:5000
+          CACHECTL_TEST_REGISTRY_SCHEME: http
+        run: uv run --no-project python3 -m unittest tests.test_oci -v
+
   gate:
     name: gate (${{ matrix.lane }})
     runs-on: ubuntu-24.04

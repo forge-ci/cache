@@ -146,6 +146,9 @@ class FileStore:
 _SLUG = re.compile(r"[^a-z0-9]+")
 
 
+OCI_MANIFEST_TYPE = "application/vnd.oci.image.manifest.v1+json"
+
+
 def repository_name(key: Key, namespace: str) -> str:
     """`obs-rust/obs-studio` + app + linux-x64 -> `<ns>/obs-rust-obs-studio-app-linux-x64`.
 
@@ -155,7 +158,9 @@ def repository_name(key: Key, namespace: str) -> str:
     """
     parts = [key.repo, key.family, key.platform]
     slug = _SLUG.sub("-", "-".join(parts).lower()).strip("-")
-    return f"{namespace}/{slug}"
+    # No namespace means the repository sits at the registry root (a localhost
+    # registry in tests); a leading slash would make the v2 path a 404.
+    return f"{namespace}/{slug}" if namespace else slug
 
 
 @dataclass
@@ -163,10 +168,15 @@ class Registry:
     host: str = "ghcr.io"
     namespace: str = "forge-ci"
     token: str = ""
+    scheme: str = "https"
 
     def __post_init__(self) -> None:
         if not self.token:
             self.token = os.environ.get("CACHECTL_REGISTRY_TOKEN", "")
+
+    @property
+    def base(self) -> str:
+        return f"{self.scheme}://{self.host}"
 
 
 class OciStore:
@@ -206,7 +216,9 @@ class OciStore:
         return sorted((m for m in manifests if m is not None), key=lambda m: m.seq)
 
     def _manifest_from_tag(self, tag: str):
-        document = self._json(f"/v2/{self.repository}/manifests/{tag}", accept=self.ARTIFACT_TYPE)
+        # Ask for the manifest media type the registry serves; `artifactType`
+        # inside the document is what identifies it as a cache layer.
+        document = self._json(f"/v2/{self.repository}/manifests/{tag}", accept=OCI_MANIFEST_TYPE)
         if not document:
             return None
         annotations = document.get("annotations") or {}
@@ -230,7 +242,7 @@ class OciStore:
 
     def _json(self, path: str, accept: str = "application/json"):
         request = urllib.request.Request(
-            f"https://{self.registry.host}{path}",
+            f"{self.registry.base}{path}",
             headers={"Accept": accept, **self._auth()},
         )
         try:
@@ -242,9 +254,125 @@ class OciStore:
             raise
 
     def _auth(self) -> dict[str, str]:
+        # An anonymous registry (a localhost one in tests) is legal: sending a
+        # bearer token to it would be the odd part.
         if not self.registry.token:
-            raise RuntimeError("no registry token: set CACHECTL_REGISTRY_TOKEN")
+            return {}
         return {"Authorization": f"Bearer {self.registry.token}"}
+
+    # -- blobs -------------------------------------------------------------
+    def _upload(self, digest: str, data: bytes) -> None:
+        """Open an upload session and PUT the bytes under DIGEST."""
+        upload = urllib.request.Request(
+            f"{self.registry.base}/v2/{self.repository}/blobs/uploads/",
+            data=b"",
+            method="POST",
+            headers=self._auth(),
+        )
+        with urllib.request.urlopen(upload, timeout=60) as response:
+            location = response.headers.get("Location") or ""
+        if not location:
+            raise RuntimeError("registry did not return an upload location")
+        separator = "&" if "?" in location else "?"
+        target = f"{location}{separator}digest={digest}"
+        if target.startswith("/"):
+            target = self.registry.base + target
+        put = urllib.request.Request(
+            target,
+            data=data,
+            method="PUT",
+            headers={**self._auth(), "Content-Type": "application/octet-stream"},
+        )
+        try:
+            with urllib.request.urlopen(put, timeout=300):
+                pass
+        except urllib.error.HTTPError as error:
+            # The registry's own message is the only useful thing here: a 400 from
+            # a blob upload means the request shape is wrong, not the network.
+            detail = error.read()[:400].decode(errors="replace")
+            raise ManifestError(f"registry refused blob {digest}: {error.code} {detail}") from error
+
+    def put_blob(self, manifest: Manifest, source: str | Path) -> None:
+        """Upload one layer's bytes and its artifact manifest under `<seq>`.
+
+        The blob goes first: a tag that exists always names bytes that exist, the
+        same ordering the file store relies on.
+        """
+        source = Path(source)
+        actual = digest_of(source)
+        if actual != manifest.digest:
+            raise ManifestError(f"{source} hashes to {actual}, manifest says {manifest.digest}")
+        data = source.read_bytes()
+        # 1. the layer, then the empty config the manifest points at: a registry
+        #    rejects a manifest whose descriptors name blobs it does not have.
+        self._upload(manifest.digest, data)
+        config = b"{}"
+        config_digest = "sha256:" + hashlib.sha256(config).hexdigest()
+        self._upload(config_digest, config)
+        # 2. the tag: an artifact manifest whose layer is the cache payload and
+        #    whose annotations reconstruct the Manifest without a blob fetch.
+        document = {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "artifactType": self.ARTIFACT_TYPE,
+            "config": {
+                "mediaType": "application/vnd.oci.empty.v1+json",
+                "digest": config_digest,
+                "size": len(config),
+            },
+            "layers": [
+                {"mediaType": self.LAYER_TYPE, "digest": manifest.digest, "size": manifest.bytes}
+            ],
+            "annotations": {
+                "org.opencontainers.image.identity": manifest.identity,
+                "org.forge-ci.cache.kind": manifest.kind,
+                "org.forge-ci.cache.parent": manifest.parent or "",
+                "org.opencontainers.image.created": manifest.created_at,
+                "org.opencontainers.image.ref.name": manifest.ref,
+                "org.opencontainers.image.revision": manifest.source_sha,
+                "org.forge-ci.cache.run-id": manifest.run_id,
+            },
+        }
+        # The PUT Content-Type must be a manifest media type the registry knows;
+        # `artifactType` inside the document is what marks it as a cache layer.
+        tag = urllib.request.Request(
+            f"{self.registry.base}/v2/{self.repository}/manifests/{manifest.key.tag(manifest.seq)}",
+            data=json.dumps(document).encode(),
+            method="PUT",
+            headers={**self._auth(), "Content-Type": OCI_MANIFEST_TYPE},
+        )
+        with urllib.request.urlopen(tag, timeout=60):
+            pass
+
+    def get_blob(self, manifest: Manifest, destination: str | Path) -> Path:
+        request = urllib.request.Request(
+            f"{self.registry.base}/v2/{self.repository}/blobs/{manifest.digest}",
+            headers=self._auth(),
+        )
+        destination = Path(destination)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with (
+                urllib.request.urlopen(request, timeout=300) as response,
+                destination.open("wb") as sink,
+            ):
+                while chunk := response.read(1 << 20):
+                    sink.write(chunk)
+        except urllib.error.HTTPError as error:
+            if error.code == 404:
+                raise FileNotFoundError(f"blob {manifest.digest} is not in {self.repository}")
+            raise
+        if digest_of(destination) != manifest.digest:
+            destination.unlink(missing_ok=True)
+            raise ManifestError(f"blob {manifest.digest} arrived corrupt")
+        return destination
+
+    def put_manifest(self, manifest: Manifest) -> None:
+        """Refused: a registry stores the tag and the blob in one operation."""
+        raise ManifestError("the OCI store publishes a blob and its tag together; call put_blob")
+
+    def keys(self) -> list[Key]:
+        return [self.key]
 
 
 def _is_seq_tag(name: str) -> bool:
