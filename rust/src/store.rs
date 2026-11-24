@@ -192,6 +192,85 @@ impl FileStore {
         Ok(())
     }
 
+    // -- deletion (retention) ---------------------------------------------
+    /// Every key with at least one entry, derived from the manifests themselves.
+    ///
+    /// A blob is shared by every key that names its digest, so deleting bytes
+    /// requires knowing which keys still reference it -- hence a full scan rather
+    /// than trusting the one key a sweep started from.
+    pub fn keys(&self) -> Result<Vec<Key>, ManifestError> {
+        let mut found: Vec<Key> = Vec::new();
+        let mut stack = vec![self.root.clone()];
+        while let Some(directory) = stack.pop() {
+            let reader = match fs::read_dir(&directory) {
+                Ok(reader) => reader,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => {
+                    return Err(ManifestError(format!("{}: {error}", directory.display())))
+                }
+            };
+            for entry in reader {
+                let path = entry
+                    .map_err(|error| ManifestError(format!("{}: {error}", directory.display())))?
+                    .path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                let name = match path.file_name().and_then(|name| name.to_str()) {
+                    Some(name) => name.to_string(),
+                    None => continue,
+                };
+                if parse_seq(&name).is_err() {
+                    continue;
+                }
+                let Some(parent) = path.parent() else { continue };
+                let Ok(relative) = parent.strip_prefix(&self.root) else { continue };
+                let parts: Vec<&str> = relative
+                    .components()
+                    .filter_map(|component| component.as_os_str().to_str())
+                    .collect();
+                if parts.len() < 3 {
+                    continue;
+                }
+                let repo = parts[..parts.len() - 2].join("/");
+                let key = Key::new(&repo, parts[parts.len() - 2], parts[parts.len() - 1])?;
+                if !found.contains(&key) {
+                    found.push(key);
+                }
+            }
+        }
+        found.sort_by(|a, b| a.prefix().cmp(&b.prefix()));
+        Ok(found)
+    }
+
+    /// Remove one entry's manifest. Missing is not an error: a sweep may have run.
+    pub fn delete_manifest(&self, manifest: &Manifest) -> Result<bool, ManifestError> {
+        let path = self
+            .key_dir(&manifest.key)
+            .join(format!("{}.json", manifest.key.tag(manifest.seq)?));
+        match fs::remove_file(&path) {
+            Ok(()) => Ok(true),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(ManifestError(format!("{}: {error}", path.display()))),
+        }
+    }
+
+    /// Whether the bytes a digest names are present.
+    pub fn has_blob(&self, digest: &str) -> bool {
+        self.blob_path(digest).exists()
+    }
+
+    /// Remove a blob. Only safe once no manifest in the store names its digest.
+    pub fn delete_blob(&self, digest: &str) -> Result<bool, ManifestError> {
+        let path = self.blob_path(digest);
+        match fs::remove_file(&path) {
+            Ok(()) => Ok(true),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(ManifestError(format!("{}: {error}", path.display()))),
+        }
+    }
+
     // -- publishing --------------------------------------------------------
     /// Plan, then write: the same two steps the Python CLI takes, so the
     /// decisions stay comparable.

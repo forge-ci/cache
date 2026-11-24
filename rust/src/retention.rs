@@ -13,6 +13,7 @@
 //! blob store is global and content addressed, so removing bytes is the last
 //! step to add, not the first.
 
+use crate::store::FileStore;
 use crate::{order, Key, Kind, Manifest, ManifestError};
 
 /// Chains kept per identity when a caller does not ask for a specific number.
@@ -76,6 +77,77 @@ impl SweepPlan {
     pub fn evicted_bytes(&self) -> u64 {
         self.evict.iter().map(|manifest| manifest.bytes).sum()
     }
+}
+
+/// What a sweep did, or would do.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SweepReport {
+    pub key: String,
+    pub dry_run: bool,
+    pub evicted: Vec<u32>,
+    pub blobs_deleted: Vec<String>,
+    pub bytes_freed: u64,
+}
+
+/// Digests named only by manifest records that are going away.
+///
+/// The manifests being evicted are still on disk when this runs, so they must be
+/// excluded explicitly: counting them as references would make every eviction
+/// look "still in use" and leak every blob. A digest another key still names is
+/// never an orphan -- the blob store is global and content addressed.
+pub fn orphan_blobs(store: &FileStore, evicted: &[Manifest]) -> Result<Vec<String>, ManifestError> {
+    if evicted.is_empty() {
+        return Ok(Vec::new());
+    }
+    let going: Vec<(String, u32)> = evicted
+        .iter()
+        .map(|manifest| (manifest.key.prefix(), manifest.seq))
+        .collect();
+    let mut still_referenced: Vec<String> = Vec::new();
+    for key in store.keys()? {
+        for manifest in store.entries(&key)? {
+            if going.contains(&(manifest.key.prefix(), manifest.seq)) {
+                continue;
+            }
+            if !still_referenced.contains(&manifest.digest) {
+                still_referenced.push(manifest.digest);
+            }
+        }
+    }
+    Ok(evicted
+        .iter()
+        .filter(|manifest| !still_referenced.contains(&manifest.digest))
+        .map(|manifest| manifest.digest.clone())
+        .collect())
+}
+
+/// Delete the planned entries, then the blobs nobody references any more.
+pub fn apply_sweep(
+    store: &FileStore,
+    plan: &SweepPlan,
+    dry_run: bool,
+) -> Result<SweepReport, ManifestError> {
+    let mut report = SweepReport {
+        key: plan.key.prefix(),
+        dry_run,
+        evicted: plan.evict.iter().map(|manifest| manifest.seq).collect(),
+        blobs_deleted: Vec::new(),
+        bytes_freed: 0,
+    };
+    if dry_run || plan.empty() {
+        return Ok(report);
+    }
+    let orphans = orphan_blobs(store, &plan.evict)?;
+    for manifest in &plan.evict {
+        store.delete_manifest(manifest)?;
+    }
+    for digest in orphans {
+        if store.delete_blob(&digest)? {
+            report.blobs_deleted.push(digest);
+        }
+    }
+    report.bytes_freed = plan.evicted_bytes();
+    Ok(report)
 }
 
 /// Decide which chains of KEY survive: the newest KEEP per identity, then MAX_BYTES.
