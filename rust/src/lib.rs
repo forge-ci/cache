@@ -16,6 +16,8 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+pub mod store;
+
 /// Publish a delta while the chain is this short; past it, cut a new base.
 pub const MAX_DELTA_CHAIN: usize = 5;
 pub const SEQ_DIGITS: usize = 6;
@@ -93,12 +95,12 @@ impl Key {
         format!("{}/{}/{}", self.repo, self.family, self.platform)
     }
 
-    pub fn entry(&self, seq: u32) -> String {
-        format!("{}/{}", self.prefix(), seq_name(seq).expect("seq >= 1"))
+    pub fn entry(&self, seq: u32) -> Result<String, ManifestError> {
+        Ok(format!("{}/{}", self.prefix(), seq_name(seq)?))
     }
 
-    pub fn tag(&self, seq: u32) -> String {
-        seq_name(seq).expect("seq >= 1")
+    pub fn tag(&self, seq: u32) -> Result<String, ManifestError> {
+        seq_name(seq)
     }
 }
 
@@ -332,7 +334,7 @@ impl PushPlan {
 
 pub fn plan_push(
     manifests: &[Manifest],
-    key: &Key,
+    _key: &Key,
     identity: &str,
     max_delta: usize,
 ) -> Result<PushPlan, ManifestError> {

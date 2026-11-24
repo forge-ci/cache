@@ -9,8 +9,8 @@ of them passes, the implementations have drifted.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 from cachelib.chain import MAX_DELTA_CHAIN, plan_push, plan_restore
 from cachelib.manifest import Key, Manifest
