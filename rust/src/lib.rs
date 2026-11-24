@@ -16,6 +16,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+pub mod registry;
 pub mod retention;
 pub mod store;
 

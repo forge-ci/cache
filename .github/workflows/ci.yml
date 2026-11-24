@@ -42,6 +42,17 @@ jobs:
           python-version: "3.14"
           enable-cache: true
 
+      - name: Set up Rust 🦀
+        uses: dtolnay/rust-toolchain@stable
+
+      # The embedded crate must be able to restore from the same registry the
+      # Python side publishes to, or "two deployments of one model" is a slogan.
+      - name: Rust registry round trip 🦀
+        env:
+          CACHECTL_TEST_REGISTRY: 127.0.0.1:5000
+          CACHECTL_TEST_REGISTRY_SCHEME: http
+        run: cargo test --manifest-path rust/Cargo.toml --test registry
+
       - name: OCI round trip 🗄️
         env:
           CACHECTL_TEST_REGISTRY: 127.0.0.1:5000
