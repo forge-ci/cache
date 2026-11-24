@@ -107,9 +107,12 @@ operations of the same store.
    this honestly and the tests skip rather than pretend. Until a btrfs host is
    in the pool, layers degrade to full tars and the chain is a correctness
    mechanism, not a bandwidth saving.
-2. **Registry credential.** `gh`'s OAuth token carries no `write:packages`, so
-   the OCI push path cannot be exercised from this checkout. It is implemented
-   and specified, not yet proven against a registry.
+2. **Registry credential.** The OCI transport is implemented on both sides and
+   proven against a local `registry:2` in CI (upload, tag, list, download, chain
+   continuation — from the CLI and from the Rust crate). What remains is
+   `ghcr.io`'s refusal of anonymous pushes: the installation token, which is also
+   what raises the rate limit that keeps breaking `soldr cook`
+   (forge-ci/setup-soldr#703). Code is no longer the blocker; a credential is.
 3. **Identity derivation.** `identity` must be computed by one shared function
    (`native_cache_identity.py` in obs-studio is the current candidate) or a
    producer will publish under an identity no consumer computes. This is the

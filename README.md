@@ -112,18 +112,23 @@ whole design exists to remove — so a chain bigger than the cap is kept whole.
 
 ## Status
 
-Prototype, with the whole model working end to end in Python and the decision
-half in Rust.
+Both deployments work end to end; what is left is deployment, not code.
 
-- Python: manifests, chains, the file store, sessions over `sqlite.db`, the HTTP
-  server, replay, and a client. 92 tests.
-- Rust: the same model (keys, validation, chain integrity, decisions) held to the
-  shared corpus in `fixtures/conformance.json`, so both implementations decide
-  identically today. Still missing from the crate: the file store, blob digesting
-  and the registry transport — it decides, the caller moves bytes.
-- OCI: naming and addressing implemented, push/pull sequences specified, never
-  exercised against a registry — `gh`'s OAuth token carries no `write:packages`,
-  which is one of the reasons the GitHub App is required (see `docs/design.md`).
+- Python: manifests, chains, the file store, the OCI store, sessions over
+  `sqlite.db`, the HTTP server, replay, a client, and retention with a timer.
+  131 tests, plus 5 that run against a real registry when one is offered.
+- Rust: the same model, the file store, retention, and the registry transport,
+  held to the shared corpora (`fixtures/conformance.json`,
+  `fixtures/retention.json`), so both implementations decide identically. 25 tests,
+  three of which run against the same real registry in CI.
+- OCI: **exercised against `registry:2` on every push** — upload, tag, list,
+  download, chain continuation, from both the CLI and the crate
+  (`.github/workflows/ci.yml`, job `oci transport`). What is *not* proven is
+  `ghcr.io` itself, which refuses anonymous pushes: that needs the App
+  installation token (`docs/design.md`).
+- Blocked, not written: btrfs delta layers (no btrfs host in the pool yet), and
+  the fleet rollout to obs-studio (needs forge-ci/setup-soldr#701 merged plus a
+  reachable `FLEET_CACHE_URL`).
 
 ## How projects consume this
 
