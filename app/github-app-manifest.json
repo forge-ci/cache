@@ -1,0 +1,22 @@
+{
+  "name": "forge-ci cache",
+  "url": "https://github.com/forge-ci/cache",
+  "hook_attributes": {
+    "url": "https://cache.forge-ci.com/webhook",
+    "active": true
+  },
+  "redirect_url": "https://cache.forge-ci.com/app/installed",
+  "description": "Publishes and restores delta-chained build caches: packages:write on the cache namespace, read-only on the repositories it serves.",
+  "public": false,
+  "request_oauth_on_install": false,
+  "setup_on_update": true,
+  "default_permissions": {
+    "actions": "read",
+    "contents": "read",
+    "metadata": "read",
+    "packages": "write"
+  },
+  "default_events": [
+    "workflow_run"
+  ]
+}

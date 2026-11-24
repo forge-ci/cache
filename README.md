@@ -1,0 +1,69 @@
+# forge-ci/cache
+
+A build-cache store built the way a compiler cache should be built: content
+addressed, delta-chained, and readable without a database.
+
+This is the systematised home for the transport that
+`obs-rust/obs-studio#5565` asks for. It replaces the per-repository ad-hoc
+stores (GitHub Actions cache, a DigitalOcean Spaces bucket, release assets) with
+one model, so a merge-queue run in any repo can *publish* a cache instead of
+only consuming what master happened to save.
+
+## The model
+
+A cache entry is a **layer**, and layers form a **chain**:
+
+```
+key = (repo, family, platform)            e.g. (obs-rust/obs-studio, app, linux-x64)
+
+s000001  full     identity A  ◄── base
+s000002  delta    identity A  parent s000001
+s000003  delta    identity A  parent s000002
+s000004  delta    identity A  parent s000003
+s000005  delta    identity A  parent s000004
+s000006  delta    identity A  parent s000005   (5 deltas: the cap)
+s000007  full     identity A  ◄── new base, chain closed
+```
+
+- **Restore** = latest compatible manifest, then walk `parent` back to the base
+  and apply base → tip. No base, no restore: a broken chain is a miss, never a
+  partial tree.
+- **Publish** = decide full or delta from the existing chain, never from a
+  clock. Five deltas is a *policy default* (`MAX_DELTA_CHAIN`), not a limit on
+  the number of builds: past it, the next publish writes a thin full base.
+- **Identity** is the compatibility contract (toolchain pin, target, build
+  configuration, cache schema). A manifest whose identity does not match the
+  consumer's is never selected, which is what makes "newest by number" safe.
+
+Manifests are one small JSON document per entry, named by an **ordered integer**
+(`s000123.json` / tag `s000123`), so "what is the newest cache for this key" is
+a single prefix listing that returns in order — no database, no index rebuild,
+no read-modify-write. Object stores and registries both list by prefix natively.
+
+## Stores
+
+| store | manifests | blobs | notes |
+|---|---|---|---|
+| `FileStore` | `<root>/<repo>/<family>/<platform>/s%06d.json` | `<root>/blobs/sha256/<hex>` | the reference implementation and the test backend |
+| `OciStore` | image **tag** `s%06d` | OCI **layer** | container registry used as an artifact cache |
+
+## Layers are btrfs send streams
+
+The low-level point: a delta layer is not a diff of file lists, it is a
+`btrfs send -p parent child` stream. `btrfs receive` applies it to produce a
+byte-exact subvolume, and the stream is already compact because btrfs encodes
+changed extents, not changed files.
+
+That means the producer needs a btrfs filesystem with a snapshot per publish.
+`snapshot.py` wraps the four commands (`subvolume snapshot`, `send`, `receive`,
+`subvolume delete`) and reports `available() == False` where btrfs is absent, so
+the filesystem-level proof runs on a host that has it (self-hosted runner) and
+the manifest/chain layer stays testable everywhere.
+
+## Status
+
+Prototype. The manifest, chain and file-store layers are implemented and
+tested; the OCI transport has its naming and addressing implemented and its
+push/pull sequences specified but not yet exercised against a registry —
+`gh`'s OAuth token carries no `write:packages`, which is one of the reasons a
+GitHub App is required (see `docs/design.md`).
