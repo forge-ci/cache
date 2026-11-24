@@ -116,7 +116,7 @@ Both deployments work end to end; what is left is deployment, not code.
 
 - Python: manifests, chains, the file store, the OCI store, sessions over
   `sqlite.db`, the HTTP server, replay, a client, and retention with a timer.
-  131 tests, plus 5 that run against a real registry when one is offered.
+  131 tests (5 of them need a real registry and skip without one).
 - Rust: the same model, the file store, retention, and the registry transport,
   held to the shared corpora (`fixtures/conformance.json`,
   `fixtures/retention.json`), so both implementations decide identically. 25 tests,
