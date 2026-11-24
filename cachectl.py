@@ -159,9 +159,7 @@ def command_pull(args: argparse.Namespace) -> int:
             elif args.apply == "tar":
                 unpack(local, destination)
             else:
-                print(
-                    f"downloaded {layer.kind} s{layer.seq:06d} ({layer.bytes} B), not applied"
-                )
+                print(f"downloaded {layer.kind} s{layer.seq:06d} ({layer.bytes} B), not applied")
     print(f"restored {key.prefix} identity {args.identity}: {describe(plan)}")
     return 0
 
@@ -247,16 +245,12 @@ def main() -> int:
                 help="chains to keep per identity (a chain is a base plus its deltas)",
             )
             sub.add_argument("--max-bytes", default=None, help="e.g. 500MB, 2GiB")
-            sub.add_argument(
-                "--protect", default="", help="comma-separated digests to keep"
-            )
+            sub.add_argument("--protect", default="", help="comma-separated digests to keep")
             sub.add_argument("--dry-run", action="store_true")
         if name == "pull":
             sub.add_argument("--dest", required=True)
             sub.add_argument("--apply", choices=("tar", "btrfs", "none"), default="tar")
-            sub.add_argument(
-                "--pin", default=None, help="restore this exact layer digest"
-            )
+            sub.add_argument("--pin", default=None, help="restore this exact layer digest")
         sub.set_defaults(
             handler={
                 "plan": command_plan,
@@ -266,9 +260,7 @@ def main() -> int:
                 "prune": command_prune,
             }[name]
         )
-    pack_parser = stages.add_parser(
-        "pack", help="build a full tar+zstd layer from a directory"
-    )
+    pack_parser = stages.add_parser("pack", help="build a full tar+zstd layer from a directory")
     pack_parser.add_argument("--directory", required=True)
     pack_parser.add_argument("--out", required=True)
     pack_parser.set_defaults(handler=command_pack)

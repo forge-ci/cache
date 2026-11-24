@@ -44,11 +44,7 @@ class ServerTest(unittest.TestCase):
 
     # -- client ------------------------------------------------------------
     def call(self, method: str, path: str, body=None, raw: bytes | None = None):
-        data = (
-            raw
-            if raw is not None
-            else (json.dumps(body).encode() if body is not None else None)
-        )
+        data = raw if raw is not None else (json.dumps(body).encode() if body is not None else None)
         request = urllib.request.Request(self.base + path, data=data, method=method)
         if data is not None:
             request.add_header("Content-Type", "application/json")
@@ -128,9 +124,7 @@ class LifecycleTest(ServerTest):
         self.assertEqual(status, 200)
         self.assertEqual(payload["status"], "closed")
 
-        status, payload = self.call(
-            "POST", f"/sessions/{self.session['id']}/publish", raw=b"x"
-        )
+        status, payload = self.call("POST", f"/sessions/{self.session['id']}/publish", raw=b"x")
         self.assertEqual(status, 409, payload)
         status, payload = self.json("POST", f"/sessions/{self.session['id']}/restore")
         self.assertEqual(status, 409)
@@ -142,9 +136,7 @@ class LifecycleTest(ServerTest):
         self.assertEqual(payload["status"], "closed")
 
     def test_a_failed_session_reports_failed(self):
-        self.json(
-            "POST", f"/sessions/{self.session['id']}/close", {"outcome": "failed"}
-        )
+        self.json("POST", f"/sessions/{self.session['id']}/close", {"outcome": "failed"})
         status, payload = self.json("GET", f"/sessions/{self.session['id']}")
         self.assertEqual(payload["status"], "failed")
 
@@ -159,15 +151,11 @@ class LifecycleTest(ServerTest):
         self.assertEqual(status, 404)
 
     def test_a_malformed_key_is_400(self):
-        status, payload = self.json(
-            "POST", "/sessions", {**KEY, "platform": "linux/x64"}
-        )
+        status, payload = self.json("POST", "/sessions", {**KEY, "platform": "linux/x64"})
         self.assertEqual(status, 400, payload)
 
     def test_an_empty_publish_body_is_refused(self):
-        status, payload = self.call(
-            "POST", f"/sessions/{self.session['id']}/publish", raw=b""
-        )
+        status, payload = self.call("POST", f"/sessions/{self.session['id']}/publish", raw=b"")
         self.assertEqual(status, 400)
         self.assertIn("layer bytes", json.loads(payload)["error"])
 
@@ -186,13 +174,9 @@ class ReplayOverHttpTest(ServerTest):
         self.json("POST", f"/sessions/{session_id}/restore")  # now a hit
         self.json("POST", f"/sessions/{session_id}/close")
 
-        status, payload = self.json(
-            "POST", f"/sessions/{session_id}/replay", {"dry_run": True}
-        )
+        status, payload = self.json("POST", f"/sessions/{session_id}/replay", {"dry_run": True})
         self.assertEqual(status, 200)
-        self.assertTrue(
-            payload["identical"], [s for s in payload["steps"] if not s["matches"]]
-        )
+        self.assertTrue(payload["identical"], [s for s in payload["steps"] if not s["matches"]])
         self.assertEqual(
             [s["op"] for s in payload["steps"]],
             ["restore", "publish", "restore", "close"],
@@ -202,9 +186,7 @@ class ReplayOverHttpTest(ServerTest):
         session_id = self.session["id"]
         self.publish(session_id)
         self.json("POST", f"/sessions/{session_id}/restore")
-        status, payload = self.json(
-            "POST", f"/sessions/{session_id}/replay", {"dry_run": False}
-        )
+        status, payload = self.json("POST", f"/sessions/{session_id}/replay", {"dry_run": False})
         self.assertEqual(status, 200)
         restore_step = next(s for s in payload["steps"] if s["op"] == "restore")
         self.assertIn("read 1 layer(s)", restore_step["note"])
@@ -223,9 +205,7 @@ class LoggingTest(ServerTest):
         self.assertEqual([e["op"] for e in events], ["restore", "publish", "close"])
         self.assertEqual([e["ordinal"] for e in events], [1, 2, 3])
         self.assertEqual(session.status, "closed")
-        self.assertEqual(
-            session.key, Key(**{k: KEY[k] for k in ("repo", "family", "platform")})
-        )
+        self.assertEqual(session.key, Key(**{k: KEY[k] for k in ("repo", "family", "platform")}))
 
 
 if __name__ == "__main__":

@@ -137,9 +137,7 @@ class RepositoryNameTest(unittest.TestCase):
         )
 
     def test_platform_suffixes_survive_the_slug(self):
-        self.assertIn(
-            "macos-arm64", repository_name(Key("a/b", "app", "macos-arm64"), "ns")
-        )
+        self.assertIn("macos-arm64", repository_name(Key("a/b", "app", "macos-arm64"), "ns"))
 
 
 if __name__ == "__main__":

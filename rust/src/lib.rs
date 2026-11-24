@@ -16,6 +16,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+pub mod retention;
 pub mod store;
 
 /// Publish a delta while the chain is this short; past it, cut a new base.

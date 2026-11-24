@@ -96,9 +96,7 @@ class FileStore:
         source = Path(source)
         actual = digest_of(source)
         if actual != manifest.digest:
-            raise ManifestError(
-                f"{source} hashes to {actual}, manifest says {manifest.digest}"
-            )
+            raise ManifestError(f"{source} hashes to {actual}, manifest says {manifest.digest}")
         target = self._blob(manifest.digest)
         target.parent.mkdir(parents=True, exist_ok=True)
         if target.exists():
@@ -204,15 +202,11 @@ class OciStore:
             raise ValueError("an OciStore is bound to one key")
         tags = self._json(f"/v2/{self.repository}/tags/list") or {}
         names = tags.get("tags") or []
-        manifests = [
-            self._manifest_from_tag(name) for name in names if _is_seq_tag(name)
-        ]
+        manifests = [self._manifest_from_tag(name) for name in names if _is_seq_tag(name)]
         return sorted((m for m in manifests if m is not None), key=lambda m: m.seq)
 
     def _manifest_from_tag(self, tag: str):
-        document = self._json(
-            f"/v2/{self.repository}/manifests/{tag}", accept=self.ARTIFACT_TYPE
-        )
+        document = self._json(f"/v2/{self.repository}/manifests/{tag}", accept=self.ARTIFACT_TYPE)
         if not document:
             return None
         annotations = document.get("annotations") or {}

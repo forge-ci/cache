@@ -104,22 +104,15 @@ class Manifest:
 
     def __post_init__(self) -> None:
         if self.kind not in (FULL, DELTA):
-            raise ManifestError(
-                f"kind must be {FULL!r} or {DELTA!r}, got {self.kind!r}"
-            )
+            raise ManifestError(f"kind must be {FULL!r} or {DELTA!r}, got {self.kind!r}")
         if self.kind == DELTA and not self.parent:
             raise ManifestError("a delta layer must name its parent")
         if self.kind == FULL and self.parent:
             raise ManifestError("a full layer cannot have a parent")
-        if (
-            not self.digest.startswith("sha256:")
-            or len(self.digest) != len("sha256:") + 64
-        ):
+        if not self.digest.startswith("sha256:") or len(self.digest) != len("sha256:") + 64:
             raise ManifestError(f"digest must be sha256:<64 hex>, got {self.digest!r}")
         if not self.identity:
-            raise ManifestError(
-                "identity is the compatibility contract; it cannot be empty"
-            )
+            raise ManifestError("identity is the compatibility contract; it cannot be empty")
 
     def to_json(self) -> str:
         data = asdict(self)

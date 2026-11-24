@@ -55,9 +55,7 @@ class ClientTest(unittest.TestCase):
         self.assertTrue(decision.hit)
         self.assertEqual(decision.bytes, len(PAYLOAD))
 
-        restored = Path(
-            self.client.download(decision.layers[0].digest, self.workdir / "layer.bin")
-        )
+        restored = Path(self.client.download(decision.layers[0].digest, self.workdir / "layer.bin"))
         self.assertEqual(restored.read_bytes(), PAYLOAD)
 
     def test_two_publishes_build_a_chain_and_the_restore_names_both(self):
@@ -95,9 +93,7 @@ class ClientTest(unittest.TestCase):
 
         detail = self.client.session(session)
         self.assertEqual([e["op"] for e in detail["events"]], ["restore", "publish"])
-        self.assertEqual(
-            [s["id"] for s in self.client.sessions(repo=KEY[0])], [session]
-        )
+        self.assertEqual([s["id"] for s in self.client.sessions(repo=KEY[0])], [session])
 
 
 if __name__ == "__main__":

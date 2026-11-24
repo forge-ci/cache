@@ -60,9 +60,7 @@ class SessionTest(unittest.TestCase):
         session = self.log.open(KEY, IDENTITY)
         self.log.seal(session.id)
         self.log.seal(session.id)
-        self.assertEqual(
-            [e["op"] for e in self.log.events(session.id)], ["close", "close"]
-        )
+        self.assertEqual([e["op"] for e in self.log.events(session.id)], ["close", "close"])
         self.assertEqual(self.log.get(session.id).status, CLOSED)
 
     def test_a_failed_session_reports_failed(self):
@@ -100,9 +98,7 @@ class SessionTest(unittest.TestCase):
         self.log.close_connection()
         reopened = SessionLog(self.root / "sqlite.db")
         try:
-            self.assertEqual(
-                [e["detail"] for e in reopened.events(session.id)], ["miss:none"]
-            )
+            self.assertEqual([e["detail"] for e in reopened.events(session.id)], ["miss:none"])
         finally:
             reopened.close_connection()
         self.log = SessionLog(self.root / "sqlite.db")
@@ -150,13 +146,9 @@ class ReplayTest(unittest.TestCase):
         self,
     ):
         session = self.log.open(KEY, IDENTITY)
-        record_restore(
-            self.log, session.id, plan_restore(self.store.entries(KEY), IDENTITY)
-        )
+        record_restore(self.log, session.id, plan_restore(self.store.entries(KEY), IDENTITY))
         self.publish(session.id)
-        record_restore(
-            self.log, session.id, plan_restore(self.store.entries(KEY), IDENTITY)
-        )
+        record_restore(self.log, session.id, plan_restore(self.store.entries(KEY), IDENTITY))
         self.log.seal(session.id)
 
         events = self.log.events(session.id)
@@ -165,16 +157,12 @@ class ReplayTest(unittest.TestCase):
 
         report = replay(self.log, self.store, session.id)
         self.assertTrue(report.identical, [s for s in report.divergent])
-        self.assertEqual(
-            [s.op for s in report.steps], [RESTORE, PUBLISH, RESTORE, "close"]
-        )
+        self.assertEqual([s.op for s in report.steps], [RESTORE, PUBLISH, RESTORE, "close"])
 
     def test_a_live_replay_also_reads_the_layers_it_would_apply(self):
         session = self.log.open(KEY, IDENTITY)
         self.publish(session.id)
-        record_restore(
-            self.log, session.id, plan_restore(self.store.entries(KEY), IDENTITY)
-        )
+        record_restore(self.log, session.id, plan_restore(self.store.entries(KEY), IDENTITY))
         report = replay(self.log, self.store, session.id, dry_run=False)
         self.assertTrue(report.identical)
         restore_step = next(s for s in report.steps if s.op == RESTORE)

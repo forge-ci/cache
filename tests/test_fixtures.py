@@ -67,9 +67,7 @@ class CorpusTest(unittest.TestCase):
             with self.subTest(case=case["name"]):
                 plan = plan_restore(manifests, restore["identity"])
                 self.assertEqual(plan.hit, restore["expect"]["hit"])
-                self.assertEqual(
-                    [layer.seq for layer in plan.layers], restore["expect"]["layers"]
-                )
+                self.assertEqual([layer.seq for layer in plan.layers], restore["expect"]["layers"])
 
     def test_every_pin_expectation_holds(self):
         for case in self.doc["cases"]:
@@ -82,9 +80,7 @@ class CorpusTest(unittest.TestCase):
                     manifests, case["restore"]["identity"], pinned_digest=pin["digest"]
                 )
                 self.assertEqual(plan.hit, pin["expect"]["hit"])
-                self.assertEqual(
-                    [layer.seq for layer in plan.layers], pin["expect"]["layers"]
-                )
+                self.assertEqual([layer.seq for layer in plan.layers], pin["expect"]["layers"])
 
     def test_the_wire_format_keeps_its_field_names(self):
         case = self.doc["cases"][1]

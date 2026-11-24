@@ -133,10 +133,7 @@ class ApplySweepTest(unittest.TestCase):
     def publish(self, key: Key, entries: list[Manifest]) -> list[Manifest]:
         published = []
         for index, manifest in enumerate(entries):
-            payload = (
-                self.root
-                / f"payload-{key.family}-{key.platform}-{manifest.seq}-{index}.bin"
-            )
+            payload = self.root / f"payload-{key.family}-{key.platform}-{manifest.seq}-{index}.bin"
             payload.write_bytes(f"{manifest.identity}:{manifest.seq}".encode() * 8)
             stored = Manifest(
                 key=key,

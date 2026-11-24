@@ -10,9 +10,7 @@ from cachelib.manifest import DELTA, FULL, Key, Manifest
 KEY = Key("obs-rust/obs-studio", "app", "linux-x64")
 
 
-def layer(
-    seq: int, kind: str, identity: str = "id-a", parent: str | None = None
-) -> Manifest:
+def layer(seq: int, kind: str, identity: str = "id-a", parent: str | None = None) -> Manifest:
     digest = f"sha256:{seq:064x}"
     return Manifest(
         key=KEY,

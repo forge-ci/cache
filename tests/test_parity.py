@@ -79,9 +79,7 @@ class ParityTest(unittest.TestCase):
         self.assertEqual([layer.seq for layer in decision.layers], [1])
         # The bytes the CLI stored are the bytes the service hands back.
         stored = Path(
-            self.client.download(
-                decision.layers[0].digest, self.root / "from-service.bin"
-            )
+            self.client.download(decision.layers[0].digest, self.root / "from-service.bin")
         )
         self.assertEqual(stored.read_bytes(), self.layer.read_bytes())
 
@@ -125,18 +123,14 @@ class ParityTest(unittest.TestCase):
 
     def test_the_two_interfaces_write_the_same_manifest_bytes(self):
         # A digest is the contract: same bytes in, same digest out, whoever wrote it.
-        session = self.client.open(
-            KEY.repo, KEY.family, KEY.platform, "id-cli-vs-server"
-        )
+        session = self.client.open(KEY.repo, KEY.family, KEY.platform, "id-cli-vs-server")
         published = self.client.publish(session, self.layer.read_bytes())
 
         store = FileStore(self.store_dir)
         [manifest] = store.entries(KEY)
         self.assertEqual(manifest.digest, published["digest"])
         self.assertEqual(manifest.bytes, self.layer.stat().st_size)
-        self.assertTrue(
-            (self.store_dir / "blobs" / manifest.digest.replace(":", "/", 1)).exists()
-        )
+        self.assertTrue((self.store_dir / "blobs" / manifest.digest.replace(":", "/", 1)).exists())
 
 
 if __name__ == "__main__":

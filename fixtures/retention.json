@@ -1,0 +1,454 @@
+{
+  "schema": 1,
+  "note": "Retention conformance for forge-ci/cache: Python (cachelib.retention) and the Rust crate must both reproduce keep/evict here. The unit of eviction is a chain, never an entry.",
+  "key": {
+    "repo": "obs-rust/obs-studio",
+    "family": "app",
+    "platform": "linux-x64"
+  },
+  "cases": [
+    {
+      "name": "one chain, one kept",
+      "why": "A single chain is one unit: a base plus its deltas.",
+      "manifests": [
+        {
+          "seq": 1,
+          "identity": "id-a",
+          "kind": "full",
+          "parent": null,
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+          "bytes": 100,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 2,
+          "identity": "id-a",
+          "kind": "delta",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+          "bytes": 200,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 3,
+          "identity": "id-a",
+          "kind": "delta",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000003",
+          "bytes": 300,
+          "created_at": "2026-11-24T00:00:00Z"
+        }
+      ],
+      "keep": 1,
+      "max_bytes": null,
+      "protect": [],
+      "expect": {
+        "keep": [
+          1,
+          2,
+          3
+        ],
+        "evict": []
+      }
+    },
+    {
+      "name": "two chains, the older goes",
+      "why": "Eviction is chain-granular, so s4 keeps its base s4-not s1.",
+      "manifests": [
+        {
+          "seq": 1,
+          "identity": "id-a",
+          "kind": "full",
+          "parent": null,
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+          "bytes": 100,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 2,
+          "identity": "id-a",
+          "kind": "delta",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+          "bytes": 200,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 3,
+          "identity": "id-a",
+          "kind": "delta",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000003",
+          "bytes": 300,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 4,
+          "identity": "id-a",
+          "kind": "full",
+          "parent": null,
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000004",
+          "bytes": 400,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 5,
+          "identity": "id-a",
+          "kind": "delta",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000004",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000005",
+          "bytes": 500,
+          "created_at": "2026-11-24T00:00:00Z"
+        }
+      ],
+      "keep": 1,
+      "max_bytes": null,
+      "protect": [],
+      "expect": {
+        "keep": [
+          4,
+          5
+        ],
+        "evict": [
+          1,
+          2,
+          3
+        ]
+      }
+    },
+    {
+      "name": "two chains, both kept",
+      "why": "keep counts chains, not entries.",
+      "manifests": [
+        {
+          "seq": 1,
+          "identity": "id-a",
+          "kind": "full",
+          "parent": null,
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+          "bytes": 100,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 2,
+          "identity": "id-a",
+          "kind": "delta",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+          "bytes": 200,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 3,
+          "identity": "id-a",
+          "kind": "delta",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000003",
+          "bytes": 300,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 4,
+          "identity": "id-a",
+          "kind": "full",
+          "parent": null,
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000004",
+          "bytes": 400,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 5,
+          "identity": "id-a",
+          "kind": "delta",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000004",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000005",
+          "bytes": 500,
+          "created_at": "2026-11-24T00:00:00Z"
+        }
+      ],
+      "keep": 2,
+      "max_bytes": null,
+      "protect": [],
+      "expect": {
+        "keep": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "evict": []
+      }
+    },
+    {
+      "name": "a protected digest keeps its whole chain",
+      "why": "The run that just published protects its own writes.",
+      "manifests": [
+        {
+          "seq": 1,
+          "identity": "id-a",
+          "kind": "full",
+          "parent": null,
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+          "bytes": 100,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 2,
+          "identity": "id-a",
+          "kind": "delta",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+          "bytes": 200,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 3,
+          "identity": "id-a",
+          "kind": "delta",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000003",
+          "bytes": 300,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 4,
+          "identity": "id-a",
+          "kind": "full",
+          "parent": null,
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000004",
+          "bytes": 400,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 5,
+          "identity": "id-a",
+          "kind": "delta",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000004",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000005",
+          "bytes": 500,
+          "created_at": "2026-11-24T00:00:00Z"
+        }
+      ],
+      "keep": 1,
+      "max_bytes": null,
+      "protect": [
+        "sha256:0000000000000000000000000000000000000000000000000000000000000002"
+      ],
+      "expect": {
+        "keep": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "evict": []
+      }
+    },
+    {
+      "name": "identities are trimmed independently",
+      "why": "One busy identity must not crowd another out.",
+      "manifests": [
+        {
+          "seq": 1,
+          "identity": "id-a",
+          "kind": "full",
+          "parent": null,
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+          "bytes": 100,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 2,
+          "identity": "id-a",
+          "kind": "delta",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+          "bytes": 200,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 3,
+          "identity": "id-a",
+          "kind": "full",
+          "parent": null,
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000003",
+          "bytes": 300,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 4,
+          "identity": "id-a",
+          "kind": "delta",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000003",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000004",
+          "bytes": 400,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 5,
+          "identity": "id-a",
+          "kind": "full",
+          "parent": null,
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000005",
+          "bytes": 500,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 6,
+          "identity": "id-a",
+          "kind": "delta",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000005",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000006",
+          "bytes": 600,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 7,
+          "identity": "id-b",
+          "kind": "full",
+          "parent": null,
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000007",
+          "bytes": 700,
+          "created_at": "2026-11-24T00:00:00Z"
+        }
+      ],
+      "keep": 1,
+      "max_bytes": null,
+      "protect": [],
+      "expect": {
+        "keep": [
+          5,
+          6,
+          7
+        ],
+        "evict": [
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    {
+      "name": "a size cap drops oldest chains, never the newest",
+      "why": "FIFO at chain granularity; the newest chain always survives.",
+      "manifests": [
+        {
+          "seq": 1,
+          "identity": "id-a",
+          "kind": "full",
+          "parent": null,
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+          "bytes": 100,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 2,
+          "identity": "id-a",
+          "kind": "delta",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+          "bytes": 200,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 3,
+          "identity": "id-a",
+          "kind": "full",
+          "parent": null,
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000003",
+          "bytes": 300,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 4,
+          "identity": "id-a",
+          "kind": "delta",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000003",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000004",
+          "bytes": 400,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 5,
+          "identity": "id-a",
+          "kind": "full",
+          "parent": null,
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000005",
+          "bytes": 500,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 6,
+          "identity": "id-a",
+          "kind": "delta",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000005",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000006",
+          "bytes": 600,
+          "created_at": "2026-11-24T00:00:00Z"
+        }
+      ],
+      "keep": 3,
+      "max_bytes": 1300,
+      "protect": [],
+      "expect": {
+        "keep": [
+          5,
+          6
+        ],
+        "evict": [
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    {
+      "name": "a chain larger than the cap is kept whole",
+      "why": "Dropping the base would orphan the delta: an over-budget cache that restores beats a store that misses.",
+      "manifests": [
+        {
+          "seq": 1,
+          "identity": "id-a",
+          "kind": "full",
+          "parent": null,
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+          "bytes": 100,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 2,
+          "identity": "id-a",
+          "kind": "delta",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+          "bytes": 200,
+          "created_at": "2026-11-24T00:00:00Z"
+        },
+        {
+          "seq": 3,
+          "identity": "id-a",
+          "kind": "delta",
+          "parent": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000003",
+          "bytes": 300,
+          "created_at": "2026-11-24T00:00:00Z"
+        }
+      ],
+      "keep": 1,
+      "max_bytes": 300,
+      "protect": [],
+      "expect": {
+        "keep": [
+          1,
+          2,
+          3
+        ],
+        "evict": []
+      }
+    }
+  ]
+}

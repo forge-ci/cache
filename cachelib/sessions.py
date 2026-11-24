@@ -203,9 +203,7 @@ class SessionLog:
         return [dict(row) for row in rows]
 
     def get(self, session_id: str) -> Session | None:
-        row = self._db.execute(
-            "SELECT * FROM session WHERE id = ?", (session_id,)
-        ).fetchone()
+        row = self._db.execute("SELECT * FROM session WHERE id = ?", (session_id,)).fetchone()
         if row is None:
             return None
         return Session(
@@ -292,9 +290,7 @@ def replay(
     # this, replaying a session that started empty and then published would
     # "diverge" on its own opening miss.
     recorded_publishes = [
-        e["seq"]
-        for e in log.events(session_id)
-        if e["op"] == PUBLISH and e["seq"] is not None
+        e["seq"] for e in log.events(session_id) if e["op"] == PUBLISH and e["seq"] is not None
     ]
     first = min(recorded_publishes) if recorded_publishes else None
     view = [m for m in entries if first is None or m.seq < first]
@@ -322,15 +318,11 @@ def replay(
                 note += "; the entry this session published is no longer in the store"
         else:
             steps.append(
-                ReplayStep(
-                    event["ordinal"], op, recorded, "", True, "not replayable by design"
-                )
+                ReplayStep(event["ordinal"], op, recorded, "", True, "not replayable by design")
             )
             continue
         steps.append(
-            ReplayStep(
-                event["ordinal"], op, recorded, replayed, recorded == replayed, note
-            )
+            ReplayStep(event["ordinal"], op, recorded, replayed, recorded == replayed, note)
         )
     return ReplayReport(session_id, dry_run, steps)
 
@@ -338,9 +330,7 @@ def replay(
 def record_restore(log: SessionLog, session_id: str, plan: RestorePlan) -> int:
     """Log what a restore decided, so replay has something to re-derive."""
     if not plan.hit:
-        return log.append(
-            session_id, RESTORE, outcome="miss", detail=restore_signature(plan)
-        )
+        return log.append(session_id, RESTORE, outcome="miss", detail=restore_signature(plan))
     tip = plan.tip
     return log.append(
         session_id,

@@ -65,9 +65,7 @@ class RustInteropTest(unittest.TestCase):
         self._tmp.cleanup()
 
     def rust(self, *args: str, expect: int = 0) -> str:
-        result = subprocess.run(
-            [str(self.binary), *args], capture_output=True, text=True
-        )
+        result = subprocess.run([str(self.binary), *args], capture_output=True, text=True)
         self.assertEqual(
             result.returncode, expect, f"stdout={result.stdout}\nstderr={result.stderr}"
         )

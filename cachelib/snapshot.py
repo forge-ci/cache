@@ -42,9 +42,7 @@ def available(path: str | Path) -> bool:
 
 
 def _run(*args: str) -> None:
-    result = subprocess.run(
-        ["btrfs", *args], capture_output=True, text=True, check=False
-    )
+    result = subprocess.run(["btrfs", *args], capture_output=True, text=True, check=False)
     if result.returncode != 0:
         raise SnapshotUnavailable(f"btrfs {' '.join(args)}: {result.stderr.strip()}")
 
@@ -66,9 +64,7 @@ class Snapshotter:
         _run("subvolume", "snapshot", "-r", str(source), str(destination))
         return Path(destination)
 
-    def send(
-        self, previous: str | Path | None, current: str | Path, stream: str | Path
-    ) -> int:
+    def send(self, previous: str | Path | None, current: str | Path, stream: str | Path) -> int:
         """Write a full (previous=None) or incremental stream; return its size."""
         stream = Path(stream)
         command = ["btrfs", "send"]
@@ -76,9 +72,7 @@ class Snapshotter:
             command += ["-p", str(previous)]
         command.append(str(current))
         with stream.open("wb") as sink:
-            result = subprocess.run(
-                command, stdout=sink, stderr=subprocess.PIPE, check=False
-            )
+            result = subprocess.run(command, stdout=sink, stderr=subprocess.PIPE, check=False)
         if result.returncode != 0:
             raise SnapshotUnavailable(f"btrfs send: {result.stderr.decode().strip()}")
         return stream.stat().st_size

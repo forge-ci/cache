@@ -74,9 +74,7 @@ def plan_push(
     compatible = for_identity(manifests, identity)
     tip = newest(compatible)
     if tip is None:
-        return PushPlan(
-            FULL, None, seq, "first entry for this identity: nothing to delta against"
-        )
+        return PushPlan(FULL, None, seq, "first entry for this identity: nothing to delta against")
     chain = chain_of(compatible, tip)
     if not chain:
         return PushPlan(
@@ -93,9 +91,7 @@ def plan_push(
             seq,
             f"{deltas} delta layer(s) already at the cap of {max_delta}: start a new base",
         )
-    return PushPlan(
-        DELTA, tip, seq, f"{deltas} delta layer(s) below the cap of {max_delta}"
-    )
+    return PushPlan(DELTA, tip, seq, f"{deltas} delta layer(s) below the cap of {max_delta}")
 
 
 def plan_restore(
@@ -109,9 +105,7 @@ def plan_restore(
     """
     compatible = for_identity(manifests, identity)
     if not compatible:
-        return RestorePlan(
-            identity, [], f"no published entry for identity {identity!r}"
-        )
+        return RestorePlan(identity, [], f"no published entry for identity {identity!r}")
     if pinned_digest is not None:
         target = next((m for m in compatible if m.digest == pinned_digest), None)
         if target is None:
@@ -130,12 +124,8 @@ def plan_restore(
     assert tip is not None
     chain = chain_of(compatible, tip)
     if not chain:
-        return RestorePlan(
-            identity, [], f"newest entry {tip.digest[:19]} has an incomplete chain"
-        )
-    return RestorePlan(
-        identity, chain, f"newest entry s{tip.seq:06d} ({len(chain)} layer(s))"
-    )
+        return RestorePlan(identity, [], f"newest entry {tip.digest[:19]} has an incomplete chain")
+    return RestorePlan(identity, chain, f"newest entry s{tip.seq:06d} ({len(chain)} layer(s))")
 
 
 def describe(plan: RestorePlan) -> str:

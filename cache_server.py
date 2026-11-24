@@ -234,9 +234,7 @@ class Handler(BaseHTTPRequestHandler):
         session_id = match["id"]
         with self.state.log() as log:
             session = self._open_session(log, session_id)
-            plan = plan_restore(
-                self.state.store().entries(session.key), session.identity
-            )
+            plan = plan_restore(self.state.store().entries(session.key), session.identity)
             record_restore(log, session_id, plan)
             layers = [
                 {
@@ -314,9 +312,7 @@ class Handler(BaseHTTPRequestHandler):
             self._open_session(log, session_id, allow_sealed=True)
             log.seal(session_id, outcome=outcome, detail=body.get("detail", ""))
             session = log.get(session_id)
-        self._send(
-            200, {"id": session_id, "status": session.status, "outcome": outcome}
-        )
+        self._send(200, {"id": session_id, "status": session.status, "outcome": outcome})
 
     def post_replay(self, match: re.Match, _query: dict) -> None:
         session_id = match["id"]
@@ -337,22 +333,16 @@ class Handler(BaseHTTPRequestHandler):
         )
 
     # -- helpers -----------------------------------------------------------
-    def _open_session(
-        self, log: SessionLog, session_id: str, allow_sealed: bool = False
-    ):
+    def _open_session(self, log: SessionLog, session_id: str, allow_sealed: bool = False):
         session = log.get(session_id)
         if session is None:
             raise KeyError(f"no session {session_id}")
         if session.closed and not allow_sealed:
-            raise Conflict(
-                f"session {session_id} is {session.status}; close is the last word"
-            )
+            raise Conflict(f"session {session_id} is {session.status}; close is the last word")
         return session
 
 
-def make_server(
-    state: State, host: str = "127.0.0.1", port: int = 0
-) -> ThreadingHTTPServer:
+def make_server(state: State, host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
     handler = type("BoundHandler", (Handler,), {"state": state})
     return ThreadingHTTPServer((host, port), handler)
 
@@ -363,9 +353,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument(
-        "--store", default=".cachectl", help="store root (file backend)"
-    )
+    parser.add_argument("--store", default=".cachectl", help="store root (file backend)")
     parser.add_argument("--db", default="sqlite.db", help="session log")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8787)

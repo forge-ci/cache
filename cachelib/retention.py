@@ -109,9 +109,7 @@ def plan_sweep(
     for manifest in ordered:
         by_identity.setdefault(manifest.identity, [])
     for identity in by_identity:
-        by_identity[identity] = chains_of(
-            [m for m in ordered if m.identity == identity]
-        )
+        by_identity[identity] = chains_of([m for m in ordered if m.identity == identity])
 
     reasons: dict[int, str] = {}
     survivors: dict[int, Manifest] = {}
@@ -197,11 +195,7 @@ def orphan_blobs(store, evicted: list[Manifest]) -> list[str]:
             if (manifest.key.prefix, manifest.seq) in going:
                 continue
             still_referenced.add(manifest.digest)
-    return [
-        manifest.digest
-        for manifest in evicted
-        if manifest.digest not in still_referenced
-    ]
+    return [manifest.digest for manifest in evicted if manifest.digest not in still_referenced]
 
 
 def apply_sweep(store, plan: SweepPlan, *, dry_run: bool = False) -> dict:
@@ -225,9 +219,7 @@ def apply_sweep(store, plan: SweepPlan, *, dry_run: bool = False) -> dict:
 
     orphans = orphan_blobs(store, plan.evict)
     for manifest in plan.evict:
-        path = (
-            store.root / manifest.key.prefix / f"{manifest.key.tag(manifest.seq)}.json"
-        )
+        path = store.root / manifest.key.prefix / f"{manifest.key.tag(manifest.seq)}.json"
         path.unlink(missing_ok=True)
     for digest in orphans:
         blob = store.root / "blobs" / digest.replace(":", "/", 1)
