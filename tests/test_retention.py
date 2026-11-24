@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
 from cachelib.manifest import DELTA, FULL, Key, Manifest
 from cachelib.retention import (
+    SweepScheduler,
     apply_sweep,
     chains_of,
     orphan_blobs,
@@ -268,6 +270,86 @@ class SweepAllTest(unittest.TestCase):
 
     def test_an_empty_store_reports_nothing(self):
         self.assertEqual(sweep_all(self.store, keep=2), [])
+
+
+class SchedulerTest(unittest.TestCase):
+    """The timer: a retention policy nobody invokes is not a policy."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.store = FileStore(self.root / "store")
+        self.logs: list[str] = []
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def log(self, message: str) -> None:
+        self.logs.append(message)
+
+    def publish(self, key: Key, seqs: list[int], bases: set[int]) -> None:
+        for manifest in chain_entries(seqs, key=key, bases=bases):
+            payload = self.root / f"{manifest.seq}-{manifest.digest[7:15]}.bin"
+            payload.write_bytes(f"x:{manifest.seq}".encode() * 8)
+            stored = Manifest(
+                key=key,
+                seq=manifest.seq,
+                identity=manifest.identity,
+                kind=manifest.kind,
+                parent=manifest.parent,
+                digest=digest_of(payload),
+                bytes=payload.stat().st_size,
+                created_at="2026-11-24T00:00:00Z",
+            )
+            self.store.put_blob(stored, payload)
+            self.store.put_manifest(stored)
+
+    def test_run_once_applies_the_policy(self):
+        self.publish(KEY, [1, 2], {1})
+        self.publish(KEY, [3], {3})
+        scheduler = SweepScheduler(self.store, interval_s=60, keep=1, log=self.log)
+        reports = scheduler.run_once()
+        self.assertEqual(scheduler.runs, 1)
+        self.assertEqual([m.seq for m in self.store.entries(KEY)], [3])
+        self.assertEqual(sum(len(report["evicted"]) for report in reports), 2)
+        self.assertIn("2 entr", self.logs[0])
+
+    def test_run_once_honours_dry_run(self):
+        self.publish(KEY, [1, 2], {1})
+        self.publish(KEY, [3], {3})
+        scheduler = SweepScheduler(self.store, interval_s=60, keep=1, dry_run=True, log=self.log)
+        scheduler.run_once()
+        self.assertEqual([m.seq for m in self.store.entries(KEY)], [1, 2, 3])
+
+    def test_a_failing_sweep_is_logged_and_does_not_stop_the_timer(self):
+        class Broken:
+            def keys(self):
+                raise RuntimeError("store is on fire")
+
+        scheduler = SweepScheduler(Broken(), interval_s=60, log=self.log)
+        self.assertEqual(scheduler.run_once(), [])
+        self.assertEqual(scheduler.failures, 1)
+        self.assertEqual(scheduler.runs, 0)
+        self.assertIn("store is on fire", self.logs[0])
+
+    def test_the_clock_ticks(self):
+        self.publish(KEY, [1, 2], {1})
+        self.publish(KEY, [3], {3})
+        scheduler = SweepScheduler(self.store, interval_s=0.05, keep=1, log=self.log).start()
+        try:
+            deadline = time.monotonic() + 3
+            while scheduler.runs < 2 and time.monotonic() < deadline:
+                time.sleep(0.02)
+        finally:
+            scheduler.stop()
+        self.assertGreaterEqual(scheduler.runs, 2, "the timer must actually fire")
+        self.assertEqual([m.seq for m in self.store.entries(KEY)], [3])
+
+    def test_the_interval_and_keep_are_validated(self):
+        with self.assertRaises(ValueError):
+            SweepScheduler(self.store, interval_s=0)
+        with self.assertRaises(ValueError):
+            SweepScheduler(self.store, interval_s=1, keep=0)
 
 
 if __name__ == "__main__":

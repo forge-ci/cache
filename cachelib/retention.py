@@ -25,6 +25,7 @@ The invariants:
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 
 from .manifest import FULL, Key, Manifest, order
@@ -203,6 +204,80 @@ def sweep_all(
         # that happened to change today.
         reports.append(apply_sweep(store, plan, dry_run=dry_run))
     return reports
+
+
+class SweepScheduler:
+    """Run `sweep_all` on an interval, inside the process that owns the store.
+
+    A retention policy that needs a human to invoke it is not a policy. This is
+    the timer: it lives next to the store (the server, or a precache host), never
+    in a publish path, and it cannot take the process down -- a failed sweep is
+    logged and the next tick tries again.
+
+    `run_once` is the unit of behaviour and is what tests drive; `start`/`stop`
+    only add the clock.
+    """
+
+    def __init__(
+        self,
+        store,
+        *,
+        interval_s: float,
+        keep: int = 2,
+        max_bytes: int | None = None,
+        dry_run: bool = False,
+        log=None,
+    ) -> None:
+        if interval_s <= 0:
+            raise ValueError("interval_s must be positive")
+        if keep < 1:
+            raise ValueError("keep must be at least 1")
+        self.store = store
+        self.interval_s = interval_s
+        self.keep = keep
+        self.max_bytes = max_bytes
+        self.dry_run = dry_run
+        self.log = log or (lambda message: None)
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self.runs = 0
+        self.failures = 0
+
+    def run_once(self) -> list[dict]:
+        """Sweep every key once. Never raises: a broken sweep must not kill the timer."""
+        try:
+            reports = sweep_all(
+                self.store, keep=self.keep, max_bytes=self.max_bytes, dry_run=self.dry_run
+            )
+            self.runs += 1
+            evicted = sum(len(report["evicted"]) for report in reports)
+            freed = sum(report["bytes_freed"] for report in reports)
+            self.log(
+                f"sweep: {len(reports)} key(s), {evicted} entr(y/ies) evicted, "
+                f"{freed} B freed (dry_run={self.dry_run})"
+            )
+            return reports
+        except Exception as error:  # noqa: BLE001 - the timer outlives its failures
+            self.failures += 1
+            self.log(f"sweep failed: {type(error).__name__}: {error}")
+            return []
+
+    def start(self) -> "SweepScheduler":
+        if self._thread is not None:
+            return self
+
+        def loop() -> None:
+            while not self._stop.wait(self.interval_s):
+                self.run_once()
+
+        self._thread = threading.Thread(target=loop, name="cache-sweep", daemon=True)
+        self._thread.start()
+        return self
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=self.interval_s + 1)
 
 
 def orphan_blobs(store, evicted: list[Manifest]) -> list[str]:

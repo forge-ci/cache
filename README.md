@@ -102,6 +102,9 @@ administrative decision, never something a publish waits on.
     cachectl.py prune --all --keep 1                # delete what the plan names
     curl -s -XPOST localhost:8787/sweep -d '{"keep":1,"dry_run":false}'
 
+    # or let the server do it on a timer, next to the store it is bounding
+    uv run cache_server.py --sweep-interval 3600 --sweep-keep 2
+
 Eviction is **chain-granular**: the newest N chains survive per identity, a
 protected digest keeps its whole chain, and the size cap drops whole chains
 oldest-first. Dropping a middle entry would orphan its deltas — the failure this

@@ -40,7 +40,7 @@ from pathlib import Path
 
 from cachelib.chain import plan_push, plan_restore
 from cachelib.manifest import Manifest, ManifestError
-from cachelib.retention import sweep_all
+from cachelib.retention import SweepScheduler, sweep_all
 from cachelib.sessions import (
     Session,
     SessionLog,
@@ -379,9 +379,40 @@ def main() -> int:
     parser.add_argument("--db", default="sqlite.db", help="session log")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8787)
+    parser.add_argument(
+        "--sweep-interval",
+        type=float,
+        default=0.0,
+        help="seconds between retention sweeps (0 = off; the timer lives here, next to the store)",
+    )
+    parser.add_argument(
+        "--sweep-keep",
+        type=int,
+        default=2,
+        help="chains to keep per identity when the timer sweeps",
+    )
+    parser.add_argument(
+        "--sweep-dry-run",
+        action="store_true",
+        help="log what the timer would delete without deleting it",
+    )
     args = parser.parse_args()
     state = State(Path(args.store), Path(args.db))
     server = make_server(state, args.host, args.port)
+    scheduler = None
+    if args.sweep_interval > 0:
+        scheduler = SweepScheduler(
+            state.store(),
+            interval_s=args.sweep_interval,
+            keep=args.sweep_keep,
+            dry_run=args.sweep_dry_run,
+            log=lambda message: print(message, flush=True),
+        ).start()
+        print(
+            f"cache-server: sweep every {args.sweep_interval}s "
+            f"(keep={args.sweep_keep}, dry_run={args.sweep_dry_run})",
+            flush=True,
+        )
     host, port = server.server_address[:2]
     print(
         f"cache-server listening on http://{host}:{port} "
@@ -393,6 +424,8 @@ def main() -> int:
     except KeyboardInterrupt:
         pass
     finally:
+        if scheduler is not None:
+            scheduler.stop()
         server.server_close()
     return 0
 

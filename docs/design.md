@@ -118,9 +118,9 @@ operations of the same store.
    and reachable from both front doors — `cachectl.py prune [--all]` and
    `POST /sweep` — dry by default. Eviction is chain-granular: the newest N chains
    survive per identity, a protected digest keeps its whole chain, and the size cap
-   drops whole chains oldest-first. Still missing is a *timer*: something has to
-   call it (a scheduled workflow, or the server on an interval) for the store to be
-   bounded without a human.
+   drops whole chains oldest-first. The timer lives with the store
+   (`cache_server.py --sweep-interval`), never in a publish path, and a failed
+   sweep is logged for the next tick rather than killing the process.
 
 ## Components: one model, two deployments
 
