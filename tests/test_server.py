@@ -26,7 +26,8 @@ PAYLOAD = b"layer-bytes" * 100
 class ServerTest(unittest.TestCase):
     """One fresh store, database and server per test: sequence numbers are state."""
 
-    def setUp(self):
+    def start_server(self) -> None:
+        """One fresh store, database and server — without opening a session."""
         self._tmp = tempfile.TemporaryDirectory()
         root = Path(self._tmp.name)
         self.state = cache_server.State(root / "store", root / "sqlite.db")
@@ -34,6 +35,9 @@ class ServerTest(unittest.TestCase):
         self.base = "http://127.0.0.1:%d" % self.server.server_address[1]
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
+
+    def setUp(self):
+        self.start_server()
         self.session = self.open()
 
     def tearDown(self):
@@ -196,6 +200,44 @@ class SweepTest(ServerTest):
     def test_a_bad_keep_is_a_400_not_a_crash(self):
         status, payload = self.json("POST", "/sweep", {"keep": 0, "dry_run": True})
         self.assertEqual(status, 400, payload)
+
+
+class AuthTest(ServerTest):
+    """A service reachable beyond localhost must not accept anonymous writes."""
+
+    TOKEN = "test-token-123"
+
+    def setUp(self):
+        # No session here: with a token set, opening one would itself be a 401.
+        self._saved = cache_server.AUTH_TOKEN
+        cache_server.AUTH_TOKEN = self.TOKEN
+        self.start_server()
+
+    def tearDown(self):
+        super().tearDown()
+        cache_server.AUTH_TOKEN = self._saved
+
+    def call_with_token(self, path: str, token: str | None):
+        request = urllib.request.Request(self.base + path, method="GET")
+        if token is not None:
+            request.add_header("Authorization", f"Bearer {token}")
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                return response.status
+        except urllib.error.HTTPError as error:
+            return error.code
+
+    def test_a_request_without_the_token_is_refused(self):
+        self.assertEqual(self.call_with_token("/health", None), 401)
+        self.assertEqual(self.call_with_token("/health", "wrong"), 401)
+
+    def test_the_right_token_is_accepted(self):
+        self.assertEqual(self.call_with_token("/health", self.TOKEN), 200)
+
+    def test_opens_a_session_requires_the_token_too(self):
+        # Every route is behind the check, not just the ones that look dangerous.
+        status, _ = self.call("POST", "/sessions", {**KEY})
+        self.assertEqual(status, 401)
 
 
 class ReplayOverHttpTest(ServerTest):

@@ -65,6 +65,10 @@ ROUTES = {
 }
 
 MAX_PUBLISH_BYTES = int(os.environ.get("CACHECTL_MAX_PUBLISH_BYTES", 8 << 30))
+# A cache that anyone can write to is a cache anyone can poison. When the service
+# is reachable beyond localhost, set CACHECTL_TOKEN and the client's
+# FLEET_CACHE_TOKEN, and every request must carry it.
+AUTH_TOKEN = os.environ.get("CACHECTL_TOKEN", "").strip()
 
 
 class Conflict(ValueError):
@@ -106,7 +110,13 @@ class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     # -- plumbing ----------------------------------------------------------
-    def log_message(self, fmt: str, *args: object) -> None:
+    def _authorised(self) -> bool:
+        if not AUTH_TOKEN:
+            return True
+        header = self.headers.get("Authorization", "")
+        return header == f"Bearer {AUTH_TOKEN}"
+
+    def log_message(self, fmt: str, *args: object) -> None:  # noqa: A003
         if os.environ.get("CACHECTL_VERBOSE"):
             sys.stderr.write(f"{self.address_string()} {fmt % args}\n")
 
@@ -153,6 +163,9 @@ class Handler(BaseHTTPRequestHandler):
         self._route("POST")
 
     def _route(self, method: str) -> None:
+        if not self._authorised():
+            self._error(401, "missing or wrong bearer token")
+            return
         parsed = urllib.parse.urlsplit(self.path)
         for name, pattern in ROUTES.items():
             if (match := pattern.match(parsed.path)) is None:
